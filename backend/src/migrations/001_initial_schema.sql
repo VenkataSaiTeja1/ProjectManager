@@ -26,9 +26,9 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_role ON users(role);
-CREATE INDEX idx_users_batch_id ON users(batch_id);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_batch_id ON users(batch_id);
 
 -- Teams table
 CREATE TABLE IF NOT EXISTS teams (
@@ -46,10 +46,10 @@ CREATE TABLE IF NOT EXISTS teams (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_teams_batch_id ON teams(batch_id);
-CREATE INDEX idx_teams_lead_id ON teams(lead_id);
-CREATE INDEX idx_teams_guide_id ON teams(guide_id);
-CREATE INDEX idx_teams_status ON teams(status);
+CREATE INDEX IF NOT EXISTS idx_teams_batch_id ON teams(batch_id);
+CREATE INDEX IF NOT EXISTS idx_teams_lead_id ON teams(lead_id);
+CREATE INDEX IF NOT EXISTS idx_teams_guide_id ON teams(guide_id);
+CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(status);
 
 -- Team Members junction table
 CREATE TABLE IF NOT EXISTS team_members (
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS team_members (
   PRIMARY KEY (team_id, user_id)
 );
 
-CREATE INDEX idx_team_members_user_id ON team_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_user_id ON team_members(user_id);
 
 -- Daily Updates table
 CREATE TABLE IF NOT EXISTS daily_updates (
@@ -77,9 +77,9 @@ CREATE TABLE IF NOT EXISTS daily_updates (
   UNIQUE(team_id, update_date)
 );
 
-CREATE INDEX idx_daily_updates_team_id ON daily_updates(team_id);
-CREATE INDEX idx_daily_updates_update_date ON daily_updates(update_date);
-CREATE INDEX idx_daily_updates_submitted_by ON daily_updates(submitted_by);
+CREATE INDEX IF NOT EXISTS idx_daily_updates_team_id ON daily_updates(team_id);
+CREATE INDEX IF NOT EXISTS idx_daily_updates_update_date ON daily_updates(update_date);
+CREATE INDEX IF NOT EXISTS idx_daily_updates_submitted_by ON daily_updates(submitted_by);
 
 -- Daily Update History (edit tracking)
 CREATE TABLE IF NOT EXISTS daily_update_history (
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS daily_update_history (
   edited_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_daily_update_history_update_id ON daily_update_history(update_id);
+CREATE INDEX IF NOT EXISTS idx_daily_update_history_update_id ON daily_update_history(update_id);
 
 -- Update Comments
 CREATE TABLE IF NOT EXISTS update_comments (
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS update_comments (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_update_comments_update_id ON update_comments(update_id);
+CREATE INDEX IF NOT EXISTS idx_update_comments_update_id ON update_comments(update_id);
 
 -- Weekly Reviews
 CREATE TABLE IF NOT EXISTS weekly_reviews (
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS weekly_reviews (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_weekly_reviews_batch_id ON weekly_reviews(batch_id);
+CREATE INDEX IF NOT EXISTS idx_weekly_reviews_batch_id ON weekly_reviews(batch_id);
 
 -- Review Acknowledgements
 CREATE TABLE IF NOT EXISTS review_acks (
@@ -136,8 +136,8 @@ CREATE TABLE IF NOT EXISTS review_remarks (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_review_remarks_review_id ON review_remarks(review_id);
-CREATE INDEX idx_review_remarks_team_id ON review_remarks(team_id);
+CREATE INDEX IF NOT EXISTS idx_review_remarks_review_id ON review_remarks(review_id);
+CREATE INDEX IF NOT EXISTS idx_review_remarks_team_id ON review_remarks(team_id);
 
 -- Announcements
 CREATE TABLE IF NOT EXISTS announcements (
@@ -151,8 +151,8 @@ CREATE TABLE IF NOT EXISTS announcements (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_announcements_audience ON announcements(audience_type);
-CREATE INDEX idx_announcements_batch_id ON announcements(batch_id);
+CREATE INDEX IF NOT EXISTS idx_announcements_audience ON announcements(audience_type);
+CREATE INDEX IF NOT EXISTS idx_announcements_batch_id ON announcements(batch_id);
 
 -- Papers
 CREATE TABLE IF NOT EXISTS papers (
@@ -168,8 +168,8 @@ CREATE TABLE IF NOT EXISTS papers (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_papers_team_id ON papers(team_id);
-CREATE INDEX idx_papers_status ON papers(status);
+CREATE INDEX IF NOT EXISTS idx_papers_team_id ON papers(team_id);
+CREATE INDEX IF NOT EXISTS idx_papers_status ON papers(status);
 
 -- Follow-ups
 CREATE TABLE IF NOT EXISTS followups (
@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS followups (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_followups_team_id ON followups(team_id);
+CREATE INDEX IF NOT EXISTS idx_followups_team_id ON followups(team_id);
 
 -- Holidays
 CREATE TABLE IF NOT EXISTS holidays (
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS holidays (
   reason VARCHAR(300) NOT NULL
 );
 
-CREATE INDEX idx_holidays_date ON holidays(holiday_date);
+CREATE INDEX IF NOT EXISTS idx_holidays_date ON holidays(holiday_date);
 
 -- Audit Log
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -203,9 +203,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_audit_log_user_id ON audit_log(user_id);
-CREATE INDEX idx_audit_log_entity ON audit_log(entity);
-CREATE INDEX idx_audit_log_created_at ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
 
 -- Notifications
 CREATE TABLE IF NOT EXISTS notifications (
@@ -220,8 +220,8 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_notifications_user_id ON notifications(user_id);
-CREATE INDEX idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 
 -- Migrations tracking table
 CREATE TABLE IF NOT EXISTS _migrations (

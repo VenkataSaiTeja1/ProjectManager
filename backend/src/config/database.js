@@ -1,16 +1,25 @@
 require('dotenv').config();
 const { Pool } = require('pg');
 
+let connectionString = process.env.DATABASE_URL || '';
+
+// If connectionString has sslmode parameter, remove it so our explicit ssl configuration takes precedence
+if (connectionString.includes('sslmode=')) {
+  connectionString = connectionString.replace(/([?&])sslmode=[^&]+(&|$)/, (match, p1, p2) => {
+    return p2 === '&' ? p1 : '';
+  }).replace(/\?$/, '');
+}
+
 const sslConfig = process.env.PG_CA_CERT
   ? { rejectUnauthorized: true, ca: process.env.PG_CA_CERT }
   : { rejectUnauthorized: false };
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
   ssl: sslConfig,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 15000,
 });
 
 // Retry logic for Aiven cold starts
