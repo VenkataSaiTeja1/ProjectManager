@@ -79,7 +79,9 @@ export default function FacultyDashboardPage() {
                   </p>
 
                   <div className="space-y-1 text-xs text-gray-500">
-                    <p><strong>Team Lead:</strong> {t.lead_name || 'Unassigned'}</p>
+                    <p>
+                      <strong>Team Lead:</strong> {t.lead_roll_number ? `[${t.lead_roll_number}] ` : ''}{t.lead_name || 'Unassigned'}
+                    </p>
                     <p><strong>Cohort:</strong> {t.batch_name}</p>
                   </div>
 

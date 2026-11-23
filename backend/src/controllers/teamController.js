@@ -28,20 +28,25 @@ const getAll = asyncHandler(async (req, res) => {
   if (batch_id) { conditions.push(`t.batch_id = $${idx++}`); params.push(batch_id); }
   if (status) { conditions.push(`t.status = $${idx++}`); params.push(status); }
   if (search) {
-    conditions.push(`(t.name ILIKE $${idx} OR t.project_title ILIKE $${idx})`);
+    conditions.push(`(t.name ILIKE $${idx} OR t.project_title ILIKE $${idx} OR lead.roll_number ILIKE $${idx})`);
     params.push(`%${search}%`);
     idx++;
   }
 
   const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
-  const countRes = await query(`SELECT COUNT(*) FROM teams t ${where}`, params);
-  const total = parseInt(countRes.rows[0].count);
+  const countRes = await query(
+    `SELECT COUNT(*) FROM teams t
+     LEFT JOIN users lead ON t.lead_id = lead.id
+     ${where}`,
+    params
+  );
+  const total = parseInt(countRes.rows[0].count, 10);
 
   const { rows } = await query(
     `SELECT t.*, b.name as batch_name,
-            lead.name as lead_name, lead.email as lead_email, lead.phone as lead_phone,
-            guide.name as guide_name, guide.email as guide_email,
+            lead.name as lead_name, lead.roll_number as lead_roll_number, lead.email as lead_email, lead.phone as lead_phone,
+            guide.name as guide_name, guide.roll_number as guide_roll_number, guide.email as guide_email,
             (SELECT COUNT(*) FROM team_members WHERE team_id = t.id) as member_count,
             (SELECT MAX(update_date) FROM daily_updates WHERE team_id = t.id) as last_update_date
      FROM teams t
@@ -70,8 +75,8 @@ const getById = asyncHandler(async (req, res) => {
 
   const { rows } = await query(
     `SELECT t.*, b.name as batch_name,
-            lead.name as lead_name, lead.email as lead_email, lead.phone as lead_phone,
-            guide.name as guide_name, guide.email as guide_email
+            lead.name as lead_name, lead.roll_number as lead_roll_number, lead.email as lead_email, lead.phone as lead_phone,
+            guide.name as guide_name, guide.roll_number as guide_roll_number, guide.email as guide_email
      FROM teams t
      LEFT JOIN batches b ON t.batch_id = b.id
      LEFT JOIN users lead ON t.lead_id = lead.id
@@ -83,10 +88,10 @@ const getById = asyncHandler(async (req, res) => {
 
   // Get members
   const { rows: members } = await query(
-    `SELECT u.id, u.name, u.email, u.phone, u.role,
+    `SELECT u.id, u.name, u.roll_number, u.email, u.phone, u.role,
             CASE WHEN u.id = $2 THEN true ELSE false END as is_lead
      FROM team_members tm JOIN users u ON tm.user_id = u.id
-     WHERE tm.team_id = $1 ORDER BY u.name`,
+     WHERE tm.team_id = $1 ORDER BY u.roll_number, u.name`,
     [req.params.id, rows[0].lead_id]
   );
 
@@ -173,14 +178,14 @@ const update = asyncHandler(async (req, res) => {
     return updated[0];
   });
 
-  await logAudit(req.user.id, 'update_team', 'teams', parseInt(req.params.id), req.body);
+  await logAudit(req.user.id, 'update_team', 'teams', parseInt(req.params.id, 10), req.body);
   return successResponse(res, result, 'Team updated');
 });
 
 const remove = asyncHandler(async (req, res) => {
   const { rows } = await query('DELETE FROM teams WHERE id = $1 RETURNING id', [req.params.id]);
   if (rows.length === 0) throw new AppError('Team not found', 404);
-  await logAudit(req.user.id, 'delete_team', 'teams', parseInt(req.params.id));
+  await logAudit(req.user.id, 'delete_team', 'teams', parseInt(req.params.id, 10));
   return successResponse(res, null, 'Team deleted');
 });
 
@@ -190,7 +195,7 @@ const addMember = asyncHandler(async (req, res) => {
     'INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
     [req.params.id, user_id]
   );
-  await logAudit(req.user.id, 'add_member', 'teams', parseInt(req.params.id), { user_id });
+  await logAudit(req.user.id, 'add_member', 'teams', parseInt(req.params.id, 10), { user_id });
   return successResponse(res, null, 'Member added');
 });
 
@@ -199,7 +204,7 @@ const removeMember = asyncHandler(async (req, res) => {
     'DELETE FROM team_members WHERE team_id = $1 AND user_id = $2',
     [req.params.id, req.params.userId]
   );
-  await logAudit(req.user.id, 'remove_member', 'teams', parseInt(req.params.id), { user_id: req.params.userId });
+  await logAudit(req.user.id, 'remove_member', 'teams', parseInt(req.params.id, 10), { user_id: req.params.userId });
   return successResponse(res, null, 'Member removed');
 });
 
@@ -217,34 +222,45 @@ const bulkImport = asyncHandler(async (req, res) => {
     const row = data[i];
     const rowNum = i + 2;
 
-    if (!row.team_name || !row.batch_name) {
+    const teamName = (row.team_name || row.team || '').toString().trim();
+    const batchName = (row.batch_name || row.batch || '').toString().trim();
+
+    if (!teamName || !batchName) {
       errors.push({ row: rowNum, error: 'team_name and batch_name are required' });
       continue;
     }
 
     try {
-      const { rows: batches } = await query('SELECT id FROM batches WHERE name ILIKE $1', [row.batch_name.trim()]);
+      const { rows: batches } = await query('SELECT id FROM batches WHERE name ILIKE $1', [batchName]);
       if (batches.length === 0) {
-        errors.push({ row: rowNum, error: `Batch not found: ${row.batch_name}` });
+        errors.push({ row: rowNum, error: `Batch not found: ${batchName}` });
         continue;
       }
 
       let leadId = null;
-      if (row.lead_email) {
-        const { rows: leads } = await query('SELECT id FROM users WHERE email = $1', [row.lead_email.toLowerCase().trim()]);
+      const leadKey = (row.lead_roll_number || row.lead_id || row.lead_email || '').toString().trim();
+      if (leadKey) {
+        const { rows: leads } = await query(
+          'SELECT id FROM users WHERE LOWER(TRIM(roll_number)) = LOWER(TRIM($1)) OR LOWER(TRIM(email)) = LOWER(TRIM($1))',
+          [leadKey]
+        );
         if (leads.length > 0) leadId = leads[0].id;
       }
 
       let guideId = null;
-      if (row.guide_email) {
-        const { rows: guides } = await query('SELECT id FROM users WHERE email = $1 AND role = $2', [row.guide_email.toLowerCase().trim(), 'faculty']);
+      const guideKey = (row.guide_roll_number || row.guide_id || row.guide_email || row.guide_name || '').toString().trim();
+      if (guideKey) {
+        const { rows: guides } = await query(
+          "SELECT id FROM users WHERE (LOWER(TRIM(roll_number)) = LOWER(TRIM($1)) OR LOWER(TRIM(email)) = LOWER(TRIM($1)) OR LOWER(TRIM(name)) = LOWER(TRIM($1))) AND role = 'faculty'",
+          [guideKey]
+        );
         if (guides.length > 0) guideId = guides[0].id;
       }
 
       const { rows } = await query(
         `INSERT INTO teams (batch_id, name, project_title, project_description, lead_id, guide_id)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [batches[0].id, row.team_name.trim(), row.project_title || null, row.project_description || null, leadId, guideId]
+        [batches[0].id, teamName, row.project_title || null, row.project_description || null, leadId, guideId]
       );
 
       // Add lead as member
@@ -252,11 +268,16 @@ const bulkImport = asyncHandler(async (req, res) => {
         await query('INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [rows[0].id, leadId]);
       }
 
-      // Add additional members by email (comma separated)
-      if (row.member_emails) {
-        const emails = row.member_emails.split(',').map(e => e.trim().toLowerCase());
-        for (const email of emails) {
-          const { rows: users } = await query('SELECT id FROM users WHERE email = $1', [email]);
+      // Add members by roll numbers or emails (comma-separated)
+      const memberKeys = (row.member_roll_numbers || row.member_emails || row.members || '').toString().trim();
+      if (memberKeys) {
+        const items = memberKeys.split(',').map(e => e.trim());
+        for (const item of items) {
+          if (!item) continue;
+          const { rows: users } = await query(
+            'SELECT id FROM users WHERE LOWER(TRIM(roll_number)) = LOWER(TRIM($1)) OR LOWER(TRIM(email)) = LOWER(TRIM($1))',
+            [item]
+          );
           if (users.length > 0) {
             await query('INSERT INTO team_members (team_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [rows[0].id, users[0].id]);
           }
@@ -283,9 +304,9 @@ const getTeamImportTemplate = asyncHandler(async (req, res) => {
     { header: 'batch_name', key: 'batch_name', width: 20 },
     { header: 'project_title', key: 'project_title', width: 30 },
     { header: 'project_description', key: 'project_description', width: 40 },
-    { header: 'lead_email', key: 'lead_email', width: 25 },
-    { header: 'guide_email', key: 'guide_email', width: 25 },
-    { header: 'member_emails', key: 'member_emails', width: 50 },
+    { header: 'lead_roll_number', key: 'lead_roll_number', width: 20 },
+    { header: 'guide_roll_number', key: 'guide_roll_number', width: 20 },
+    { header: 'member_roll_numbers', key: 'member_roll_numbers', width: 40 },
   ];
 
   sheet.getRow(1).eachCell(cell => {
@@ -294,9 +315,13 @@ const getTeamImportTemplate = asyncHandler(async (req, res) => {
   });
 
   sheet.addRow({
-    team_name: 'Team Alpha', batch_name: '2027 Batch', project_title: 'AI Project',
-    project_description: 'Description', lead_email: 'lead@student.edu', guide_email: 'guide@college.edu',
-    member_emails: 'member1@student.edu,member2@student.edu'
+    team_name: 'Team Alpha',
+    batch_name: '2027 Batch',
+    project_title: 'AI Attendance System',
+    project_description: 'Automated attendance using facial recognition',
+    lead_roll_number: '231FA04001',
+    guide_roll_number: 'FAC001',
+    member_roll_numbers: '231FA04002,231FA04003'
   });
 
   sheet.views = [{ state: 'frozen', ySplit: 1 }];

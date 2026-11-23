@@ -234,8 +234,10 @@ export default function AdminTeamDetailPage() {
               </div>
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Team Lead</span>
-                <p className="text-sm font-bold text-gray-900">{team.lead_name || 'Unassigned'}</p>
-                <p className="text-xs text-gray-500 font-mono">{team.lead_email} • {team.lead_phone || 'No phone'}</p>
+                <p className="text-sm font-bold text-gray-900">
+                  {team.lead_roll_number ? `[${team.lead_roll_number}] ` : ''}{team.lead_name || 'Unassigned'}
+                </p>
+                {team.lead_phone && <p className="text-xs text-gray-500 font-mono">{team.lead_phone}</p>}
               </div>
             </div>
 
@@ -245,8 +247,10 @@ export default function AdminTeamDetailPage() {
               </div>
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">Faculty Guide</span>
-                <p className="text-sm font-bold text-gray-900">{team.guide_name || 'Unassigned'}</p>
-                <p className="text-xs text-gray-500 font-mono">{team.guide_email || 'No email'}</p>
+                <p className="text-sm font-bold text-gray-900">
+                  {team.guide_roll_number ? `[${team.guide_roll_number}] ` : ''}{team.guide_name || 'Unassigned'}
+                </p>
+                {team.guide_email && <p className="text-xs text-gray-500 font-mono">{team.guide_email}</p>}
               </div>
             </div>
           </div>
@@ -270,14 +274,16 @@ export default function AdminTeamDetailPage() {
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-gray-800">{m.name}</span>
+                    <span className="text-sm font-bold text-gray-800">
+                      {m.roll_number ? `[${m.roll_number}] ` : ''}{m.name}
+                    </span>
                     {m.is_lead && (
                       <span className="text-[10px] font-black uppercase bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded">
                         Lead
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-gray-500">{m.email}</p>
+                  {m.phone && <p className="text-xs text-gray-500 font-mono">{m.phone}</p>}
                 </div>
 
                 {!m.is_lead && (
@@ -396,7 +402,7 @@ export default function AdminTeamDetailPage() {
               <option value="">Select Student</option>
               {candidateStudents.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} ({s.email})
+                  {s.roll_number ? `[${s.roll_number}] ` : ''}{s.name}
                 </option>
               ))}
             </select>

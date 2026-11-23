@@ -13,15 +13,18 @@ const COOKIE_OPTIONS = {
 };
 
 const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const { identifier, email, password } = req.body;
+  const loginId = (identifier || email || '').trim().toLowerCase();
 
   const { rows } = await query(
-    'SELECT id, name, email, phone, role, password_hash, must_change_password, batch_id, is_active FROM users WHERE email = $1',
-    [email.toLowerCase().trim()]
+    `SELECT id, name, email, phone, role, password_hash, must_change_password, batch_id, is_active, roll_number
+     FROM users
+     WHERE LOWER(TRIM(roll_number)) = $1 OR (email IS NOT NULL AND LOWER(TRIM(email)) = $1)`,
+    [loginId]
   );
 
   if (rows.length === 0) {
-    throw new AppError('Invalid email or password.', 401);
+    throw new AppError('Invalid Roll Number / User ID or password.', 401);
   }
 
   const user = rows[0];
@@ -32,7 +35,7 @@ const login = asyncHandler(async (req, res) => {
 
   const isMatch = await bcrypt.compare(password, user.password_hash);
   if (!isMatch) {
-    throw new AppError('Invalid email or password.', 401);
+    throw new AppError('Invalid Roll Number / User ID or password.', 401);
   }
 
   const token = generateToken(user);
@@ -66,7 +69,7 @@ const logout = asyncHandler(async (req, res) => {
 
 const me = asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT u.id, u.name, u.email, u.phone, u.role, u.must_change_password, u.batch_id, u.is_active,
+    `SELECT u.id, u.name, u.email, u.phone, u.role, u.must_change_password, u.batch_id, u.is_active, u.roll_number,
             b.name as batch_name,
             (SELECT COUNT(*) FROM notifications WHERE user_id = u.id AND is_read = FALSE) as unread_count
      FROM users u
@@ -81,6 +84,7 @@ const me = asyncHandler(async (req, res) => {
     const { rows: teams } = await query(
       `SELECT t.id, t.name, t.project_title, t.lead_id,
               (SELECT name FROM users WHERE id = t.lead_id) as lead_name,
+              (SELECT roll_number FROM users WHERE id = t.lead_id) as lead_roll_number,
               (SELECT name FROM users WHERE id = t.guide_id) as guide_name
        FROM teams t
        JOIN team_members tm ON t.id = tm.team_id

@@ -216,7 +216,6 @@ export default function DailyTrackerPage() {
                       <tr>
                         <th className="py-3 px-4">Team</th>
                         <th className="py-3 px-4">Team Lead</th>
-                        <th className="py-3 px-4">Phone</th>
                         <th className="py-3 px-4">Faculty Guide</th>
                         <th className="py-3 px-4">Missed Days</th>
                         <th className="py-3 px-4 text-right">Action</th>
@@ -244,19 +243,20 @@ export default function DailyTrackerPage() {
                               <div className="text-xs text-gray-500 font-normal">{t.project_title || 'No title'}</div>
                             </td>
                             <td className="py-3 px-4">
-                              <span className="font-semibold text-gray-800">{t.lead_name || 'Unassigned'}</span>
-                              <div className="text-xs text-gray-500">{t.lead_email}</div>
-                            </td>
-                            <td className="py-3 px-4 font-mono text-xs font-semibold text-gray-700">
-                              {t.lead_phone ? (
-                                <a href={`tel:${t.lead_phone}`} className="hover:underline text-primary-600">
-                                  {t.lead_phone}
-                                </a>
-                              ) : (
-                                'N/A'
+                              <span className="font-semibold text-gray-800">
+                                {t.lead_roll_number ? `[${t.lead_roll_number}] ` : ''}
+                                {t.lead_name || 'Unassigned'}
+                              </span>
+                              {t.lead_phone && (
+                                <div className="text-xs text-gray-500 font-mono">
+                                  <a href={`tel:${t.lead_phone}`} className="hover:underline text-primary-600">
+                                    {t.lead_phone}
+                                  </a>
+                                </div>
                               )}
                             </td>
                             <td className="py-3 px-4 text-gray-700 font-medium">
+                              {t.guide_roll_number ? `[${t.guide_roll_number}] ` : ''}
                               {t.guide_name || 'Unassigned'}
                             </td>
                             <td className="py-3 px-4">
@@ -326,7 +326,9 @@ export default function DailyTrackerPage() {
                         <tr key={t.team_id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="py-3 px-4 font-bold text-gray-900">
                             <div>{t.team_name}</div>
-                            <div className="text-xs text-gray-500 font-normal">Lead: {t.lead_name}</div>
+                            <div className="text-xs text-gray-500 font-normal">
+                              Lead: {t.lead_roll_number ? `[${t.lead_roll_number}] ` : ''}{t.lead_name || 'Unassigned'}
+                            </div>
                           </td>
                           <td className="py-3 px-4 text-gray-700 max-w-xs">{t.done_today}</td>
                           <td className="py-3 px-4 text-gray-600 max-w-xs">{t.plan_tomorrow || '—'}</td>

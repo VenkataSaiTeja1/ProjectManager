@@ -1,8 +1,12 @@
 const { z } = require('zod');
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  identifier: z.string().optional(),
+  email: z.string().optional(),
   password: z.string().min(1, 'Password is required'),
+}).refine(data => Boolean(data.identifier || data.email), {
+  message: 'Roll number or User ID is required',
+  path: ['identifier'],
 });
 
 const changePasswordSchema = z.object({
@@ -16,18 +20,20 @@ const changePasswordSchema = z.object({
 });
 
 const createUserSchema = z.object({
+  roll_number: z.string().min(1, 'Roll number / ID is required').max(100),
   name: z.string().min(2, 'Name must be at least 2 characters').max(150),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().optional().nullable(),
+  email: z.string().email('Invalid email').optional().nullable().or(z.literal('')),
+  phone: z.string().optional().nullable().or(z.literal('')),
   role: z.enum(['admin', 'faculty', 'student']),
-  password: z.string().min(6, 'Password must be at least 6 characters').optional(),
+  password: z.string().min(6).optional().nullable().or(z.literal('')),
   batch_id: z.number().int().positive().optional().nullable(),
 });
 
 const updateUserSchema = z.object({
+  roll_number: z.string().min(1).max(100).optional(),
   name: z.string().min(2).max(150).optional(),
-  email: z.string().email().optional(),
-  phone: z.string().optional().nullable(),
+  email: z.string().email().optional().nullable().or(z.literal('')),
+  phone: z.string().optional().nullable().or(z.literal('')),
   role: z.enum(['admin', 'faculty', 'student']).optional(),
   batch_id: z.number().int().positive().optional().nullable(),
   is_active: z.boolean().optional(),

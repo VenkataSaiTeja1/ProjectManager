@@ -179,8 +179,8 @@ const dailyTracker = asyncHandler(async (req, res) => {
   const { rows: teams } = await query(
     `SELECT t.id as team_id, t.name as team_name, t.project_title, t.batch_id,
             b.name as batch_name,
-            lead.id as lead_id, lead.name as lead_name, lead.email as lead_email, lead.phone as lead_phone,
-            guide.name as guide_name,
+            lead.id as lead_id, lead.name as lead_name, lead.roll_number as lead_roll_number, lead.email as lead_email, lead.phone as lead_phone,
+            guide.name as guide_name, guide.roll_number as guide_roll_number,
             du.id as update_id, du.done_today, du.plan_tomorrow, du.blockers,
             du.percent_complete, du.is_late, du.created_at as submitted_at,
             (SELECT MAX(update_date) FROM daily_updates WHERE team_id = t.id AND update_date < $1) as last_update_before

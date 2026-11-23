@@ -11,11 +11,11 @@ import {
   FiPlus,
   FiUploadCloud,
   FiKey,
-  FiUserX,
+  FiTrash2,
   FiSearch,
   FiFilter,
-  FiFileText,
   FiDownload,
+  FiUser,
 } from 'react-icons/fi';
 
 export default function UsersPage() {
@@ -34,13 +34,11 @@ export default function UsersPage() {
   const [importFile, setImportFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [importing, setImporting] = useState(false);
-  const [tempPasswordResult, setTempPasswordResult] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({
+    roll_number: '',
     name: '',
-    email: '',
-    phone: '',
     role: 'student',
     batch_id: '',
   });
@@ -91,9 +89,8 @@ export default function UsersPage() {
   const openCreateModal = () => {
     setUserModal({ isOpen: true, user: null });
     setFormData({
+      roll_number: '',
       name: '',
-      email: '',
-      phone: '',
       role: 'student',
       batch_id: batches[0]?.id || '',
     });
@@ -113,10 +110,7 @@ export default function UsersPage() {
         toast.success('User updated successfully');
       } else {
         const res = await api.post('/users', payload);
-        toast.success('User created');
-        if (res.data?.tempPassword) {
-          setTempPasswordResult({ email: formData.email, tempPassword: res.data.tempPassword });
-        }
+        toast.success(`User created! Default password: ${res.data?.defaultPassword || 'Student@123'}`);
       }
       setUserModal({ isOpen: false, user: null });
       fetchUsers();
@@ -128,24 +122,24 @@ export default function UsersPage() {
   };
 
   const handleResetPassword = async (user) => {
-    if (!window.confirm(`Reset password for ${user.name}? A temporary password will be generated.`)) return;
+    const defaultPw = user.role === 'student' ? 'Student@123' : user.role === 'faculty' ? 'Faculty@123' : 'Admin@123';
+    if (!window.confirm(`Reset password for ${user.name} (${user.roll_number}) back to default (${defaultPw})?`)) return;
     try {
-      const res = await api.post(`/users/${user.id}/reset-password`);
-      setTempPasswordResult({ email: user.email, tempPassword: res.data.tempPassword });
-      toast.success('Password reset successfully');
+      await api.post(`/users/${user.id}/reset-password`);
+      toast.success(`Password reset to ${defaultPw}`);
     } catch (err) {
       toast.error(err.message || 'Failed to reset password');
     }
   };
 
-  const handleDeactivate = async (user) => {
-    if (!window.confirm(`Deactivate user ${user.name}? They will not be able to log in.`)) return;
+  const handleDeleteUser = async (user) => {
+    if (!window.confirm(`Permanently remove ${user.name} (${user.roll_number}) from the system? They will be removed from all assigned teams.`)) return;
     try {
-      await api.post(`/users/${user.id}/deactivate`);
-      toast.success('User deactivated');
+      await api.delete(`/users/${user.id}`);
+      toast.success(`User ${user.name} removed successfully`);
       fetchUsers();
     } catch (err) {
-      toast.error(err.message || 'Failed to deactivate');
+      toast.error(err.message || 'Failed to delete user');
     }
   };
 
@@ -159,7 +153,7 @@ export default function UsersPage() {
       fd.append('file', importFile);
       const res = await api.upload('/users/bulk-import', fd);
       setImportResult(res.data);
-      toast.success(`Import complete: ${res.data.successes.length} added, ${res.data.errors.length} failed.`);
+      toast.success(`Import complete: ${res.data.successes?.length || 0} users enrolled.`);
       fetchUsers();
     } catch (err) {
       toast.error(err.message || 'Import failed');
@@ -173,8 +167,8 @@ export default function UsersPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Users & Faculty Directory</h1>
-            <p className="text-sm text-gray-500">Manage students, faculty guides and coordinator profiles</p>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Student & Faculty Directory</h1>
+            <p className="text-sm text-gray-500">Manage student roll numbers, faculty guides and coordinator profiles</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -195,7 +189,7 @@ export default function UsersPage() {
               className="btn-primary inline-flex items-center gap-2 text-xs"
             >
               <FiPlus className="w-4 h-4" />
-              Add User
+              Add Student / Faculty
             </button>
 
             <ExcelExportBtn
@@ -214,7 +208,7 @@ export default function UsersPage() {
               <FiSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
                 type="text"
-                placeholder="Search by student/faculty name or email..."
+                placeholder="Search by student roll number or full name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-xl text-sm outline-none focus:border-primary-500"
@@ -266,31 +260,31 @@ export default function UsersPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500 border-b border-gray-100">
                 <tr>
-                  <th className="py-3.5 px-6">Name</th>
-                  <th className="py-3.5 px-6">Email</th>
-                  <th className="py-3.5 px-6">Phone</th>
+                  <th className="py-3.5 px-6">Roll Number / ID</th>
+                  <th className="py-3.5 px-6">Full Name</th>
                   <th className="py-3.5 px-6">Role</th>
                   <th className="py-3.5 px-6">Cohort / Batch</th>
-                  <th className="py-3.5 px-6">Status</th>
+                  <th className="py-3.5 px-6">Default Password</th>
                   <th className="py-3.5 px-6 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="py-8 text-center text-sm text-gray-400">
-                      No users found.
+                    <td colSpan="6" className="py-8 text-center text-sm text-gray-400">
+                      No users found. Click &quot;Add Student / Faculty&quot; above to create one.
                     </td>
                   </tr>
                 ) : (
                   users.map((u) => (
                     <tr key={u.id} className="hover:bg-gray-50/50">
-                      <td className="py-3.5 px-6 font-bold text-gray-900">{u.name}</td>
-                      <td className="py-3.5 px-6 text-gray-600">{u.email}</td>
-                      <td className="py-3.5 px-6 text-xs text-gray-500 font-mono">{u.phone || '—'}</td>
+                      <td className="py-3.5 px-6 font-mono font-bold text-gray-900 uppercase">
+                        {u.roll_number || 'admin'}
+                      </td>
+                      <td className="py-3.5 px-6 font-bold text-gray-800">{u.name}</td>
                       <td className="py-3.5 px-6">
                         <span
-                          className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold capitalize ${
+                          className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold capitalize ${
                             u.role === 'admin'
                               ? 'bg-purple-100 text-purple-800'
                               : u.role === 'faculty'
@@ -302,30 +296,24 @@ export default function UsersPage() {
                         </span>
                       </td>
                       <td className="py-3.5 px-6 text-xs text-gray-600">{u.batch_name || '—'}</td>
-                      <td className="py-3.5 px-6">
-                        <span
-                          className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            u.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                          }`}
-                        >
-                          {u.is_active ? 'Active' : 'Inactive'}
-                        </span>
+                      <td className="py-3.5 px-6 text-xs text-gray-500 font-mono">
+                        {u.role === 'student' ? 'Student@123' : u.role === 'faculty' ? 'Faculty@123' : 'Admin@123'}
                       </td>
                       <td className="py-3.5 px-6 text-right space-x-2">
                         <button
                           onClick={() => handleResetPassword(u)}
-                          title="Reset temporary password"
+                          title="Reset password to default"
                           className="p-1.5 text-gray-500 hover:text-amber-600 rounded-lg hover:bg-gray-100 transition-colors"
                         >
                           <FiKey className="w-4 h-4" />
                         </button>
-                        {u.is_active && u.role !== 'admin' && (
+                        {u.role !== 'admin' && (
                           <button
-                            onClick={() => handleDeactivate(u)}
-                            title="Deactivate Account"
+                            onClick={() => handleDeleteUser(u)}
+                            title="Remove / Delete User"
                             className="p-1.5 text-gray-500 hover:text-rose-600 rounded-lg hover:bg-gray-100 transition-colors"
                           >
-                            <FiUserX className="w-4 h-4" />
+                            <FiTrash2 className="w-4 h-4" />
                           </button>
                         )}
                       </td>
@@ -361,73 +349,13 @@ export default function UsersPage() {
         )}
       </div>
 
-      {/* Temp Password Dialog */}
-      <Modal
-        isOpen={Boolean(tempPasswordResult)}
-        onClose={() => setTempPasswordResult(null)}
-        title="Temporary Credentials Generated"
-      >
-        <div className="space-y-4">
-          <p className="text-xs text-gray-600">
-            Please copy and share this temporary password with the user. They will be required to change it on their first login.
-          </p>
-          <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500">Email:</p>
-            <p className="font-mono text-sm font-bold text-gray-900 mb-2">{tempPasswordResult?.email}</p>
-            <p className="text-xs text-gray-500">Temporary Password:</p>
-            <p className="font-mono text-base font-black text-primary-600 select-all">
-              {tempPasswordResult?.tempPassword}
-            </p>
-          </div>
-          <button
-            onClick={() => setTempPasswordResult(null)}
-            className="w-full btn-primary text-xs"
-          >
-            Done
-          </button>
-        </div>
-      </Modal>
-
-      {/* Create / Edit User Modal */}
+      {/* Create User Modal */}
       <Modal
         isOpen={userModal.isOpen}
         onClose={() => setUserModal({ isOpen: false, user: null })}
-        title={userModal.user ? 'Edit User' : 'Add New User'}
+        title="Add Student or Faculty"
       >
         <form onSubmit={handleSaveUser} className="space-y-4">
-          <div>
-            <label className="label-text">Full Name</label>
-            <input
-              required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g. Arun Patel"
-              className="input-field"
-            />
-          </div>
-
-          <div>
-            <label className="label-text">Email Address</label>
-            <input
-              type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="arun@student.edu"
-              className="input-field"
-            />
-          </div>
-
-          <div>
-            <label className="label-text">Phone Number</label>
-            <input
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="e.g. 9876543210"
-              className="input-field"
-            />
-          </div>
-
           <div>
             <label className="label-text">Role</label>
             <select
@@ -437,13 +365,36 @@ export default function UsersPage() {
             >
               <option value="student">Student</option>
               <option value="faculty">Faculty Guide</option>
-              <option value="admin">Project Coordinator (Admin)</option>
             </select>
+          </div>
+
+          <div>
+            <label className="label-text">
+              {formData.role === 'student' ? 'Student Roll Number' : 'Faculty ID / Roll Number'}
+            </label>
+            <input
+              required
+              value={formData.roll_number}
+              onChange={(e) => setFormData({ ...formData, roll_number: e.target.value })}
+              placeholder={formData.role === 'student' ? 'e.g. 231FA04001' : 'e.g. FAC001'}
+              className="input-field uppercase font-mono"
+            />
+          </div>
+
+          <div>
+            <label className="label-text">Full Name</label>
+            <input
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder={formData.role === 'student' ? 'e.g. Arun Patel' : 'e.g. Dr. Ramesh Kumar'}
+              className="input-field"
+            />
           </div>
 
           {formData.role === 'student' && (
             <div>
-              <label className="label-text">Batch</label>
+              <label className="label-text">Cohort / Batch</label>
               <select
                 value={formData.batch_id}
                 onChange={(e) => setFormData({ ...formData, batch_id: e.target.value })}
@@ -459,6 +410,14 @@ export default function UsersPage() {
             </div>
           )}
 
+          <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-xs text-blue-800">
+            <strong>Default Password:</strong> Upon creation, the account password will automatically be set to{' '}
+            <code className="bg-white px-1.5 py-0.5 rounded font-bold">
+              {formData.role === 'student' ? 'Student@123' : 'Faculty@123'}
+            </code>
+            . The user will be required to change it on their first login.
+          </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -468,7 +427,7 @@ export default function UsersPage() {
               Cancel
             </button>
             <button type="submit" disabled={saving} className="btn-primary text-xs">
-              {saving ? 'Saving...' : 'Save User'}
+              {saving ? 'Saving...' : 'Add User'}
             </button>
           </div>
         </form>
@@ -483,7 +442,7 @@ export default function UsersPage() {
       >
         <div className="space-y-4">
           <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-800">
-            <span>Download pre-formatted import template:</span>
+            <span>Download roll number import template:</span>
             <button
               onClick={() => api.downloadExcel('/users/template', {}, 'user_import_template.xlsx')}
               className="inline-flex items-center gap-1 font-bold text-primary-700 hover:underline"
@@ -503,7 +462,7 @@ export default function UsersPage() {
                 className="block w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 cursor-pointer"
               />
               <p className="text-[11px] text-gray-400 mt-2">
-                Supported columns: name, email, phone, role (faculty/student), batch_name
+                Supported columns: <strong>roll_number</strong>, <strong>name</strong>, <strong>role</strong> (student/faculty), <strong>batch_name</strong>
               </p>
             </div>
 
@@ -512,11 +471,10 @@ export default function UsersPage() {
               disabled={importing || !importFile}
               className="w-full btn-primary text-xs"
             >
-              {importing ? 'Processing File...' : 'Upload & Import Rows'}
+              {importing ? 'Processing File...' : 'Upload & Enroll Students/Faculty'}
             </button>
           </form>
 
-          {/* Row-level Error Report */}
           {importResult && (
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
               <div className="flex items-center justify-between text-xs font-bold">

@@ -98,7 +98,7 @@ const facultyDashboard = asyncHandler(async (req, res) => {
 
   const { rows: teams } = await query(
     `SELECT t.*, b.name as batch_name,
-            lead.name as lead_name,
+            lead.name as lead_name, lead.roll_number as lead_roll_number,
             (SELECT MAX(update_date) FROM daily_updates WHERE team_id = t.id) as last_update_date,
             (SELECT COUNT(*) FROM daily_updates WHERE team_id = t.id AND update_date = $2) as has_today_update,
             (SELECT COUNT(*) FROM team_members WHERE team_id = t.id) as member_count
@@ -130,8 +130,8 @@ const studentDashboard = asyncHandler(async (req, res) => {
   // Get student's team
   const { rows: teamRows } = await query(
     `SELECT t.*, b.name as batch_name,
-            lead.name as lead_name, lead.id as lead_id,
-            guide.name as guide_name
+            lead.name as lead_name, lead.roll_number as lead_roll_number, lead.id as lead_id,
+            guide.name as guide_name, guide.roll_number as guide_roll_number
      FROM team_members tm
      JOIN teams t ON tm.team_id = t.id
      LEFT JOIN batches b ON t.batch_id = b.id

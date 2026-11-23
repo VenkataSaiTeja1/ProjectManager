@@ -105,8 +105,10 @@ export default function StudentTeamPage() {
             <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">
               Assigned Faculty Guide
             </span>
-            <h3 className="text-base font-bold text-gray-900">{team.guide_name || 'Unassigned'}</h3>
-            <p className="text-xs text-gray-500 font-mono">{team.guide_email || 'No email provided'}</p>
+            <h3 className="text-base font-bold text-gray-900">
+              {team.guide_roll_number ? `[${team.guide_roll_number}] ` : ''}{team.guide_name || 'Unassigned'}
+            </h3>
+            {team.guide_email && <p className="text-xs text-gray-500 font-mono">{team.guide_email}</p>}
           </div>
         </div>
 
@@ -117,17 +119,21 @@ export default function StudentTeamPage() {
             {team.members?.map((m) => (
               <div key={m.id} className="p-3.5 bg-gray-50 rounded-xl border border-gray-100 space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm text-gray-900">{m.name}</span>
+                  <span className="font-bold text-sm text-gray-900">
+                    {m.roll_number ? `[${m.roll_number}] ` : ''}{m.name}
+                  </span>
                   {m.is_lead && (
                     <span className="text-[10px] font-black uppercase bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full">
                       Team Lead
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                  <FiMail className="w-3.5 h-3.5" />
-                  <span>{m.email}</span>
-                </div>
+                {m.email && (
+                  <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <FiMail className="w-3.5 h-3.5" />
+                    <span>{m.email}</span>
+                  </div>
+                )}
                 {m.phone && (
                   <div className="flex items-center gap-1.5 text-xs text-gray-500 font-mono">
                     <FiPhone className="w-3.5 h-3.5" />

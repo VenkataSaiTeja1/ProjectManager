@@ -3,11 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { FiMail, FiLock, FiArrowRight } from 'react-icons/fi';
+import { FiUser, FiLock, FiArrowRight } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -15,17 +15,18 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      toast.error('Please enter email and password');
+    if (!identifier || !password) {
+      toast.error('Please enter your Roll Number / User ID and password');
       return;
     }
 
     try {
       setLoading(true);
-      const res = await login(email, password);
+      const res = await login(identifier, password);
       toast.success('Welcome back!');
 
       if (res.mustChangePassword) {
+        // AppLayout will also display the required password update popup
         router.push('/change-password');
       } else {
         const role = res.user.role;
@@ -34,7 +35,7 @@ export default function LoginPage() {
         else router.push('/student/dashboard');
       }
     } catch (err) {
-      toast.error(err.message || 'Invalid login credentials');
+      toast.error(err.message || 'Invalid Roll Number / User ID or password');
     } finally {
       setLoading(false);
     }
@@ -48,25 +49,25 @@ export default function LoginPage() {
             PM
           </div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">Project Monitoring Portal</h1>
-          <p className="text-sm text-gray-500 mt-1">Sign in with your college credentials</p>
+          <p className="text-xs text-gray-500 mt-1">Sign in with your Roll Number or Faculty ID</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1.5">
-              Email Address
+              Roll Number / User ID
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
-                <FiMail className="w-4 h-4" />
+                <FiUser className="w-4 h-4" />
               </div>
               <input
-                type="email"
+                type="text"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@college.edu"
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="e.g. 231FA04001 or admin"
+                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all uppercase"
               />
             </div>
           </div>
@@ -88,6 +89,9 @@ export default function LoginPage() {
                 className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none transition-all"
               />
             </div>
+            <p className="text-[11px] text-gray-400 mt-1.5">
+              Default password: <strong>Student@123</strong> (students) or <strong>Faculty@123</strong> (faculty).
+            </p>
           </div>
 
           <button

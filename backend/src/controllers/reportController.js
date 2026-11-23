@@ -41,8 +41,8 @@ const dailySubmissionReport = asyncHandler(async (req, res) => {
 
   const { rows } = await query(
     `SELECT t.name as team_name, t.project_title, b.name as batch_name,
-            lead.name as lead_name, lead.phone as lead_phone,
-            guide.name as guide_name,
+            lead.roll_number as lead_roll_number, lead.name as lead_name, lead.phone as lead_phone,
+            guide.roll_number as guide_roll_number, guide.name as guide_name,
             du.update_date, du.done_today, du.plan_tomorrow, du.blockers,
             du.percent_complete, du.is_late,
             du.created_at as submitted_at
@@ -64,9 +64,11 @@ const dailySubmissionReport = asyncHandler(async (req, res) => {
     { header: 'Team', key: 'team_name', width: 20 },
     { header: 'Project', key: 'project_title', width: 30 },
     { header: 'Batch', key: 'batch_name', width: 15 },
-    { header: 'Lead', key: 'lead_name', width: 20 },
+    { header: 'Lead Roll No', key: 'lead_roll_number', width: 15 },
+    { header: 'Lead Name', key: 'lead_name', width: 20 },
     { header: 'Phone', key: 'lead_phone', width: 15 },
-    { header: 'Guide', key: 'guide_name', width: 20 },
+    { header: 'Guide ID', key: 'guide_roll_number', width: 15 },
+    { header: 'Guide Name', key: 'guide_name', width: 20 },
     { header: 'Status', key: 'status', width: 15 },
     { header: 'Done Today', key: 'done_today', width: 40 },
     { header: 'Plan Tomorrow', key: 'plan_tomorrow', width: 40 },
@@ -98,8 +100,8 @@ const teamProgressReport = asyncHandler(async (req, res) => {
   const { rows } = await query(
     `SELECT t.name as team_name, t.project_title, t.status, t.progress_percent,
             b.name as batch_name,
-            lead.name as lead_name, lead.phone as lead_phone,
-            guide.name as guide_name,
+            lead.roll_number as lead_roll_number, lead.name as lead_name, lead.phone as lead_phone,
+            guide.roll_number as guide_roll_number, guide.name as guide_name,
             t.start_date, t.end_date,
             (SELECT MAX(update_date) FROM daily_updates WHERE team_id = t.id) as last_update,
             (SELECT COUNT(*) FROM daily_updates WHERE team_id = t.id) as total_updates,
@@ -122,9 +124,11 @@ const teamProgressReport = asyncHandler(async (req, res) => {
     { header: 'Batch', key: 'batch_name', width: 15 },
     { header: 'Status', key: 'status', width: 15 },
     { header: 'Progress %', key: 'progress_percent', width: 12 },
-    { header: 'Lead', key: 'lead_name', width: 20 },
+    { header: 'Lead Roll No', key: 'lead_roll_number', width: 15 },
+    { header: 'Lead Name', key: 'lead_name', width: 20 },
     { header: 'Phone', key: 'lead_phone', width: 15 },
-    { header: 'Guide', key: 'guide_name', width: 20 },
+    { header: 'Guide ID', key: 'guide_roll_number', width: 15 },
+    { header: 'Guide Name', key: 'guide_name', width: 20 },
     { header: 'Members', key: 'member_count', width: 10 },
     { header: 'Start Date', key: 'start_date', width: 12 },
     { header: 'End Date', key: 'end_date', width: 12 },
@@ -192,13 +196,13 @@ const usersReport = asyncHandler(async (req, res) => {
   const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
   const { rows } = await query(
-    `SELECT u.name, u.email, u.phone, u.role, u.is_active,
+    `SELECT u.roll_number, u.name, u.email, u.phone, u.role, u.is_active,
             b.name as batch_name,
             (SELECT string_agg(t.name, ', ') FROM team_members tm JOIN teams t ON tm.team_id = t.id WHERE tm.user_id = u.id) as teams
      FROM users u
      LEFT JOIN batches b ON u.batch_id = b.id
      ${where}
-     ORDER BY u.role, u.name`,
+     ORDER BY u.role, u.roll_number, u.name`,
     params
   );
 
@@ -206,11 +210,12 @@ const usersReport = asyncHandler(async (req, res) => {
   const sheet = workbook.addWorksheet('Users');
 
   sheet.columns = [
+    { header: 'Roll Number / ID', key: 'roll_number', width: 20 },
     { header: 'Name', key: 'name', width: 25 },
+    { header: 'Role', key: 'role', width: 12 },
+    { header: 'Batch', key: 'batch_name', width: 15 },
     { header: 'Email', key: 'email', width: 30 },
     { header: 'Phone', key: 'phone', width: 15 },
-    { header: 'Role', key: 'role', width: 10 },
-    { header: 'Batch', key: 'batch_name', width: 15 },
     { header: 'Active', key: 'is_active', width: 8 },
     { header: 'Teams', key: 'teams', width: 30 },
   ];

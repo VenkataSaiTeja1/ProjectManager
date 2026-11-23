@@ -115,7 +115,10 @@ export default function FacultyTeamDetailPage() {
           </p>
 
           <div className="flex flex-wrap items-center gap-6 text-xs text-gray-500 pt-2 border-t border-gray-100">
-            <div><strong>Team Lead:</strong> {team.lead_name} ({team.lead_phone || 'No phone'})</div>
+            <div>
+              <strong>Team Lead:</strong> {team.lead_roll_number ? `[${team.lead_roll_number}] ` : ''}{team.lead_name}
+              {team.lead_phone && ` (${team.lead_phone})`}
+            </div>
             <div><strong>Cohort:</strong> {team.batch_name}</div>
           </div>
         </div>
@@ -127,14 +130,16 @@ export default function FacultyTeamDetailPage() {
             {team.members?.map((m) => (
               <div key={m.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-gray-900">{m.name}</span>
+                  <span className="font-bold text-gray-900">
+                    {m.roll_number ? `[${m.roll_number}] ` : ''}{m.name}
+                  </span>
                   {m.is_lead && (
                     <span className="bg-primary-100 text-primary-700 font-bold px-1.5 py-0.5 rounded text-[10px]">
                       Lead
                     </span>
                   )}
                 </div>
-                <p className="text-gray-500 mt-0.5">{m.email}</p>
+                {m.email && <p className="text-gray-500 mt-0.5">{m.email}</p>}
                 {m.phone && <p className="text-gray-400 font-mono mt-0.5">{m.phone}</p>}
               </div>
             ))}

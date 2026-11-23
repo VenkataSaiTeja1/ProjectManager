@@ -29,10 +29,10 @@ describe('Auth & Permission Tests', () => {
   });
 
   describe('POST /api/auth/login', () => {
-    it('rejects invalid email or missing password', async () => {
+    it('rejects missing credentials', async () => {
       const res = await request(app)
         .post('/api/auth/login')
-        .send({ email: 'invalid-email', password: '' });
+        .send({ identifier: '', password: '' });
       expect(res.statusCode).toBe(400);
       expect(res.body.success).toBe(false);
     });
@@ -45,7 +45,7 @@ describe('Auth & Permission Tests', () => {
         .send({ email: 'unknown@college.edu', password: 'Password@123' });
 
       expect(res.statusCode).toBe(401);
-      expect(res.body.message).toMatch(/invalid email or password/i);
+      expect(res.body.message).toMatch(/invalid (roll number|email|user id)|invalid/i);
     });
 
     it('logs in successfully and sets cookie for valid credentials', async () => {

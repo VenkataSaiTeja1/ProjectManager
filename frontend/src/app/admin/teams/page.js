@@ -292,10 +292,13 @@ export default function TeamsPage() {
                       <td className="py-3.5 px-6 text-xs text-gray-600 font-medium">{t.batch_name}</td>
                       <td className="py-3.5 px-6 text-xs text-gray-800">
                         <span className="font-semibold">{t.lead_name || 'Unassigned'}</span>
-                        <div className="text-gray-400 font-mono text-[11px]">{t.lead_phone}</div>
+                        <div className="text-primary-700 font-mono font-bold text-[11px] uppercase">{t.lead_roll_number || '—'}</div>
                       </td>
                       <td className="py-3.5 px-6 text-xs text-gray-700 font-medium">
-                        {t.guide_name || 'Unassigned'}
+                        <div>{t.guide_name || 'Unassigned'}</div>
+                        {t.guide_roll_number && (
+                          <div className="text-gray-400 font-mono text-[10px]">{t.guide_roll_number}</div>
+                        )}
                       </td>
                       <td className="py-3.5 px-6">
                         <div className="flex items-center gap-2">
@@ -429,7 +432,7 @@ export default function TeamsPage() {
                 <option value="">Select Team Lead</option>
                 {studentsList.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.email})
+                    {s.roll_number ? `[${s.roll_number}] ` : ''}{s.name}
                   </option>
                 ))}
               </select>
@@ -445,7 +448,7 @@ export default function TeamsPage() {
                 <option value="">Assign Faculty Guide</option>
                 {facultyList.map((f) => (
                   <option key={f.id} value={f.id}>
-                    {f.name}
+                    {f.roll_number ? `[${f.roll_number}] ` : ''}{f.name}
                   </option>
                 ))}
               </select>
@@ -466,7 +469,7 @@ export default function TeamsPage() {
             >
               {studentsList.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.name} ({s.email})
+                  {s.roll_number ? `[${s.roll_number}] ` : ''}{s.name}
                 </option>
               ))}
             </select>
