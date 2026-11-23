@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: project-monitor-backend
+    env: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node src/index.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        sync: false
+      - key: PG_CA_CERT
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: ADMIN_EMAIL
+        value: admin@college.edu
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DAILY_CUTOFF_TIME
+        value: "20:00"
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: SEED_DEMO
+        value: "false"
+      - key: CRON_SECRET
+        generateValue: true

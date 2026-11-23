@@ -7,6 +7,20 @@ const { errorHandler } = require('./middleware/errorHandler');
 
 // Import routes
 const authRoutes = require('./routes/auth');
+const batchRoutes = require('./routes/batches');
+const userRoutes = require('./routes/users');
+const teamRoutes = require('./routes/teams');
+const dailyUpdateRoutes = require('./routes/dailyUpdates');
+const reviewRoutes = require('./routes/reviews');
+const announcementRoutes = require('./routes/announcements');
+const paperRoutes = require('./routes/papers');
+const followupRoutes = require('./routes/followups');
+const holidayRoutes = require('./routes/holidays');
+const dashboardRoutes = require('./routes/dashboard');
+const reportRoutes = require('./routes/reports');
+const auditRoutes = require('./routes/audit');
+const notificationRoutes = require('./routes/notifications');
+const cronRoutes = require('./routes/cron');
 
 const app = express();
 
@@ -47,6 +61,20 @@ app.get('/api/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/batches', batchRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/teams', teamRoutes);
+app.use('/api/daily-updates', dailyUpdateRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/papers', paperRoutes);
+app.use('/api/followups', followupRoutes);
+app.use('/api/holidays', holidayRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/cron', cronRoutes);
 
 // 404 handler
 app.use('/api/*', (req, res) => {
