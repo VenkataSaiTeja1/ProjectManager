@@ -15,6 +15,11 @@ import {
   FiPaperclip,
   FiExternalLink,
   FiSend,
+  FiZap,
+  FiAlertCircle,
+  FiAlertTriangle,
+  FiCheck,
+  FiEdit3,
 } from 'react-icons/fi';
 
 export default function FacultyReviewsPage() {
@@ -28,6 +33,11 @@ export default function FacultyReviewsPage() {
   const [remarkText, setRemarkText] = useState('');
   const [remarkStatus, setRemarkStatus] = useState('approved');
   const [savingRemark, setSavingRemark] = useState(false);
+
+  // Batch Comment Solution Modal
+  const [solutionModal, setSolutionModal] = useState({ isOpen: false, comment: null });
+  const [solutionForm, setSolutionForm] = useState({ text: '', link: '' });
+  const [submittingSolution, setSubmittingSolution] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -72,6 +82,37 @@ export default function FacultyReviewsPage() {
       toast.error(err.message || 'Error saving remark');
     } finally {
       setSavingRemark(false);
+    }
+  };
+
+  const handleOpenSolutionModal = (comment) => {
+    setSolutionModal({ isOpen: true, comment });
+    setSolutionForm({
+      text: comment.solution_text || '',
+      link: comment.solution_link || '',
+    });
+  };
+
+  const handleSaveSolution = async (e) => {
+    e.preventDefault();
+    if (!solutionForm.text.trim()) {
+      toast.error('Please describe the solution or action taken');
+      return;
+    }
+
+    try {
+      setSubmittingSolution(true);
+      await api.post(`/reviews/batch-comments/${solutionModal.comment.id}/solution`, {
+        solution_text: solutionForm.text.trim(),
+        solution_link: solutionForm.link.trim() || null,
+      });
+      toast.success('Solution submitted successfully! Coordinator has been notified.');
+      setSolutionModal({ isOpen: false, comment: null });
+      fetchData();
+    } catch (err) {
+      toast.error(err.message || 'Failed to submit solution');
+    } finally {
+      setSubmittingSolution(false);
     }
   };
 
@@ -169,6 +210,136 @@ export default function FacultyReviewsPage() {
                       </a>
                     </div>
                   )}
+
+                  {/* Batch-Specific Comments & Solutions for Guided Teams */}
+                  <div className="pt-3 border-t border-gray-100 space-y-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-primary-900 flex items-center gap-1.5">
+                      <FiZap className="w-3.5 h-3.5 text-primary-600" />
+                      Comments Given to Your Guided Batches & Submitted Solutions ({r.batch_comments?.length || 0})
+                    </h4>
+
+                    {r.batch_comments && r.batch_comments.length > 0 ? (
+                      <div className="space-y-3">
+                        {r.batch_comments.map((bc) => (
+                          <div
+                            key={bc.id}
+                            className={`p-4 rounded-xl border text-xs space-y-3 ${
+                              bc.status === 'approved'
+                                ? 'bg-emerald-50/50 border-emerald-300'
+                                : bc.status === 'submitted'
+                                ? 'bg-blue-50/50 border-blue-300'
+                                : bc.status === 'needs_revision'
+                                ? 'bg-rose-50/50 border-rose-300'
+                                : 'bg-amber-50/50 border-amber-300'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-sm text-gray-900">{bc.team_name}</span>
+                                <span className="text-primary-700 font-bold">
+                                  ({bc.project_title || 'Untitled Project'})
+                                </span>
+                                {bc.lead_name && (
+                                  <span className="text-gray-500 font-medium text-[11px]">
+                                    • Lead: {bc.lead_name} {bc.lead_roll_number ? `[${bc.lead_roll_number}]` : ''}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {bc.status === 'approved' && (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                                    <FiCheck className="w-3 h-3" /> Solution Approved
+                                  </span>
+                                )}
+                                {bc.status === 'submitted' && (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-800 flex items-center gap-1">
+                                    Solution Submitted
+                                  </span>
+                                )}
+                                {bc.status === 'needs_revision' && (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 flex items-center gap-1">
+                                    <FiAlertTriangle className="w-3 h-3" /> Revisions Needed
+                                  </span>
+                                )}
+                                {bc.status === 'pending' && (
+                                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 flex items-center gap-1">
+                                    <FiAlertCircle className="w-3 h-3" /> Pending Solution
+                                  </span>
+                                )}
+
+                                {bc.status !== 'approved' && (
+                                  <button
+                                    onClick={() => handleOpenSolutionModal(bc)}
+                                    className="btn-primary text-xs py-1 px-3 inline-flex items-center gap-1"
+                                  >
+                                    <FiEdit3 className="w-3 h-3" />
+                                    <span>{bc.solution_text ? 'Update Solution' : 'Submit Solution'}</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Coordinator Comment Text */}
+                            <div className="bg-white p-3 rounded-lg border border-gray-200">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-primary-800 block mb-0.5">
+                                Coordinator Comment:
+                              </span>
+                              <p className="text-gray-800 whitespace-pre-line leading-relaxed font-medium">
+                                {bc.comments}
+                              </p>
+                            </div>
+
+                            {/* Coordinator Feedback on revision */}
+                            {bc.coordinator_feedback && (
+                              <div className="bg-rose-100/70 p-2.5 rounded-lg border border-rose-200 text-rose-900">
+                                <span className="text-[10px] font-bold uppercase tracking-wider block">
+                                  Coordinator Feedback:
+                                </span>
+                                <p className="mt-0.5 text-xs">{bc.coordinator_feedback}</p>
+                              </div>
+                            )}
+
+                            {/* Solution Details */}
+                            {bc.solution_text && (
+                              <div className="bg-white p-3 rounded-lg border border-gray-200 space-y-1">
+                                <div className="flex items-center justify-between text-[10px] text-gray-500">
+                                  <span className="font-bold text-gray-700 uppercase tracking-wider">
+                                    Submitted Solution:
+                                  </span>
+                                  {bc.submitter_name && (
+                                    <span>
+                                      By: <strong>{bc.submitter_name}</strong> {bc.submitter_roll_number ? `[${bc.submitter_roll_number}]` : ''} on {new Date(bc.solution_submitted_at).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-gray-800 whitespace-pre-line leading-relaxed">
+                                  {bc.solution_text}
+                                </p>
+                                {bc.solution_link && (
+                                  <div className="pt-1 flex items-center gap-1.5 text-xs">
+                                    <span className="text-gray-500 font-medium">Verification Link:</span>
+                                    <a
+                                      href={bc.solution_link}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-primary-600 font-bold hover:underline inline-flex items-center gap-1"
+                                    >
+                                      {bc.solution_link} <FiExternalLink className="w-3 h-3" />
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        No batch-specific comments assigned to your guided teams in this review.
+                      </p>
+                    )}
+                  </div>
 
                   {/* Student & Faculty Responses Thread */}
                   <div className="pt-3 border-t border-gray-100 space-y-3">
@@ -271,6 +442,64 @@ export default function FacultyReviewsPage() {
             </button>
             <button type="submit" disabled={savingRemark} className="btn-primary text-xs">
               {savingRemark ? 'Saving...' : 'Submit Remark'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Guide Solution Submission Modal */}
+      <Modal
+        isOpen={solutionModal.isOpen}
+        onClose={() => setSolutionModal({ isOpen: false, comment: null })}
+        title={`Submit Solution for ${solutionModal.comment?.team_name || 'Batch'}`}
+      >
+        <form onSubmit={handleSaveSolution} className="space-y-4">
+          <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-xs">
+            <span className="font-bold text-primary-800 uppercase tracking-wider block mb-1">
+              Coordinator Review Comments:
+            </span>
+            <p className="text-gray-800 whitespace-pre-line">
+              {solutionModal.comment?.comments}
+            </p>
+          </div>
+
+          <div>
+            <label className="label-text">
+              Solution Description / Work Done <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              required
+              rows={4}
+              value={solutionForm.text}
+              onChange={(e) => setSolutionForm({ ...solutionForm, text: e.target.value })}
+              placeholder="Describe the solution implemented, architectural fixes, completed modules, or test results..."
+              className="input-field"
+            />
+          </div>
+
+          <div>
+            <label className="label-text">
+              Solution Verification Link (GitHub PR, Google Drive, Live Demo, or Docs)
+            </label>
+            <input
+              type="url"
+              value={solutionForm.link}
+              onChange={(e) => setSolutionForm({ ...solutionForm, link: e.target.value })}
+              placeholder="https://github.com/..."
+              className="input-field"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setSolutionModal({ isOpen: false, comment: null })}
+              className="btn-secondary text-xs"
+            >
+              Cancel
+            </button>
+            <button type="submit" disabled={submittingSolution} className="btn-primary text-xs">
+              {submittingSolution ? 'Submitting...' : 'Submit Solution'}
             </button>
           </div>
         </form>

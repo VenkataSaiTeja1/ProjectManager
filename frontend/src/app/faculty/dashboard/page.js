@@ -18,6 +18,10 @@ import {
   FiPaperclip,
   FiExternalLink,
   FiSend,
+  FiAlertCircle,
+  FiAlertTriangle,
+  FiCheck,
+  FiEdit3,
 } from 'react-icons/fi';
 
 export default function FacultyDashboardPage() {
@@ -25,6 +29,9 @@ export default function FacultyDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState({});
   const [submittingReply, setSubmittingReply] = useState({});
+  const [solutionTexts, setSolutionTexts] = useState({});
+  const [solutionLinks, setSolutionLinks] = useState({});
+  const [submittingSolution, setSubmittingSolution] = useState({});
   const router = useRouter();
 
   const fetchDashboard = async () => {
@@ -32,6 +39,16 @@ export default function FacultyDashboardPage() {
       setLoading(true);
       const res = await api.get('/dashboard/faculty');
       setData(res.data);
+      if (res.data?.guidedBatchComments?.length > 0) {
+        const texts = {};
+        const links = {};
+        res.data.guidedBatchComments.forEach(bc => {
+          texts[bc.id] = bc.solution_text || '';
+          links[bc.id] = bc.solution_link || '';
+        });
+        setSolutionTexts(texts);
+        setSolutionLinks(links);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -42,6 +59,28 @@ export default function FacultyDashboardPage() {
   useEffect(() => {
     fetchDashboard();
   }, []);
+
+  const handleSubmitSolution = async (commentId) => {
+    const text = solutionTexts[commentId]?.trim();
+    if (!text) {
+      toast.error('Please describe the solution or action taken for the comments');
+      return;
+    }
+
+    try {
+      setSubmittingSolution(prev => ({ ...prev, [commentId]: true }));
+      await api.post(`/reviews/batch-comments/${commentId}/solution`, {
+        solution_text: text,
+        solution_link: solutionLinks[commentId]?.trim() || null,
+      });
+      toast.success('Solution submitted successfully! Coordinator has been notified.');
+      fetchDashboard();
+    } catch (err) {
+      toast.error(err.message || 'Failed to submit solution');
+    } finally {
+      setSubmittingSolution(prev => ({ ...prev, [commentId]: false }));
+    }
+  };
 
   const handleSendReply = async (reviewId) => {
     const text = replyText[reviewId]?.trim();
@@ -72,17 +111,202 @@ export default function FacultyDashboardPage() {
     );
   }
 
-  const { teams = [], recentUpdates = [], weeklyReviews = [] } = data || {};
+  const { teams = [], recentUpdates = [], weeklyReviews = [], guidedBatchComments = [] } = data || {};
 
   return (
     <AppLayout requiredRole="faculty">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">Faculty Guide Dashboard</h1>
-          <p className="text-sm text-gray-500">Monitor your assigned student project teams, verify weekly coordinator review suggestions & answer comments</p>
+          <p className="text-sm text-gray-500">Monitor your assigned student project teams, review batch-specific coordinator comments & submit solutions</p>
         </div>
 
-        {/* Weekly Review Suggestions from Coordinator (Key Feature) */}
+        {/* Weekly Review Batch Comments for Guided Teams (Key Feature) */}
+        {guidedBatchComments.length > 0 && (
+          <div className="card space-y-4 border-2 border-primary-500 bg-gradient-to-b from-white to-primary-50/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-primary-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 bg-primary-600 text-white rounded-lg">
+                    <FiZap className="w-4 h-4" />
+                  </span>
+                  <h2 className="text-base font-black text-gray-900">
+                    Weekly Review Comments for Your Guided Batches — Solution Submission
+                  </h2>
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Coordinator comments given specifically to your batches. Guide and student members must submit solutions addressing them.
+                </p>
+              </div>
+
+              <button
+                onClick={() => router.push('/faculty/reviews')}
+                className="text-xs font-bold text-primary-700 hover:underline flex items-center gap-1"
+              >
+                All Weekly Reviews <FiArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {guidedBatchComments.map((bc) => (
+                <div
+                  key={bc.id}
+                  className={`p-5 rounded-2xl border text-xs space-y-4 ${
+                    bc.status === 'approved'
+                      ? 'bg-emerald-50/40 border-emerald-300'
+                      : bc.status === 'submitted'
+                      ? 'bg-blue-50/40 border-blue-300'
+                      : bc.status === 'needs_revision'
+                      ? 'bg-rose-50/40 border-rose-300'
+                      : 'bg-amber-50/40 border-amber-300'
+                  }`}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-sm text-gray-900">{bc.team_name}</span>
+                      <span className="text-xs text-primary-700 font-bold">
+                        ({bc.project_title || 'Untitled Project'})
+                      </span>
+                      <span className="text-[10px] bg-primary-100 text-primary-800 font-bold px-2 py-0.5 rounded-full">
+                        Week {bc.week_no}
+                      </span>
+                      <span className="text-[10px] text-gray-400">
+                        Date: {new Date(bc.review_date).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <div>
+                      {bc.status === 'approved' && (
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                          <FiCheck className="w-3.5 h-3.5" /> Solution Approved
+                        </span>
+                      )}
+                      {bc.status === 'submitted' && (
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 flex items-center gap-1">
+                          <FiClock className="w-3.5 h-3.5" /> Solution Submitted (Awaiting Coordinator Review)
+                        </span>
+                      )}
+                      {bc.status === 'needs_revision' && (
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 flex items-center gap-1">
+                          <FiAlertTriangle className="w-3.5 h-3.5" /> Revisions Requested
+                        </span>
+                      )}
+                      {bc.status === 'pending' && (
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 flex items-center gap-1">
+                          <FiAlertCircle className="w-3.5 h-3.5" /> Pending Solution Submission
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Team Lead Info */}
+                  {bc.lead_name && (
+                    <div className="text-gray-500 text-[11px]">
+                      <span>Team Lead: <strong>{bc.lead_name}</strong> {bc.lead_roll_number ? `[${bc.lead_roll_number}]` : ''}</span>
+                    </div>
+                  )}
+
+                  {/* Coordinator's Comments Box */}
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-1">
+                    <strong className="text-gray-900 font-bold uppercase tracking-wider block text-[11px] text-primary-800">
+                      Coordinator Comments & Instructions for {bc.team_name}:
+                    </strong>
+                    <p className="text-gray-800 whitespace-pre-line leading-relaxed text-sm font-medium">
+                      {bc.comments}
+                    </p>
+                  </div>
+
+                  {/* Coordinator Feedback Note if Revisions requested */}
+                  {bc.coordinator_feedback && (
+                    <div className="bg-rose-100/70 p-3 rounded-xl border border-rose-200 text-rose-900 space-y-0.5">
+                      <strong className="font-bold text-[11px] uppercase block">Coordinator Feedback:</strong>
+                      <p className="text-xs">{bc.coordinator_feedback}</p>
+                    </div>
+                  )}
+
+                  {/* Solution Submission / View Form */}
+                  <div className="bg-white p-4 rounded-xl border border-gray-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <strong className="text-gray-900 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                        <FiCheckCircle className="w-4 h-4 text-primary-600" />
+                        {bc.solution_text ? 'Submitted Solution & Resolution Work' : 'Submit Solution for this Batch'}
+                      </strong>
+                      {bc.submitter_name && (
+                        <span className="text-[10px] text-gray-500 font-medium">
+                          Last updated by: <strong>{bc.submitter_name}</strong> {bc.submitter_roll_number ? `[${bc.submitter_roll_number}]` : ''} ({new Date(bc.solution_submitted_at).toLocaleDateString()})
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-600 block mb-1">
+                        Solution Description / Actions Completed:
+                      </label>
+                      <textarea
+                        rows={3}
+                        placeholder="Detail how this batch addressed the review comments (e.g. Implemented the requested modules, fixed relations, conducted testing)..."
+                        value={solutionTexts[bc.id] || ''}
+                        onChange={(e) => setSolutionTexts({ ...solutionTexts, [bc.id]: e.target.value })}
+                        disabled={bc.status === 'approved'}
+                        className="input-field text-xs disabled:bg-gray-50"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-600 block mb-1">
+                        Solution Verification Link (GitHub PR, Google Drive, Live Demo, or Docs):
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://github.com/..."
+                        value={solutionLinks[bc.id] || ''}
+                        onChange={(e) => setSolutionLinks({ ...solutionLinks, [bc.id]: e.target.value })}
+                        disabled={bc.status === 'approved'}
+                        className="input-field text-xs disabled:bg-gray-50"
+                      />
+                    </div>
+
+                    {bc.solution_link && (
+                      <div className="flex items-center gap-2 pt-1 text-xs">
+                        <span className="text-gray-500">Current Submitted Link:</span>
+                        <a
+                          href={bc.solution_link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-primary-600 font-bold hover:underline inline-flex items-center gap-1"
+                        >
+                          {bc.solution_link} <FiExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    )}
+
+                    {bc.status !== 'approved' && (
+                      <div className="flex justify-end pt-2">
+                        <button
+                          onClick={() => handleSubmitSolution(bc.id)}
+                          disabled={submittingSolution[bc.id] || !solutionTexts[bc.id]?.trim()}
+                          className="btn-primary text-xs inline-flex items-center gap-1.5 px-5 disabled:opacity-50"
+                        >
+                          <FiSend className="w-3.5 h-3.5" />
+                          <span>
+                            {submittingSolution[bc.id]
+                              ? 'Submitting...'
+                              : bc.solution_text
+                              ? 'Update Solution for Batch'
+                              : 'Submit Solution for Batch'}
+                          </span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Weekly Review Suggestions from Coordinator (General Cohort Guidance) */}
         <div className="card space-y-4 border-2 border-indigo-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
             <div>
@@ -95,7 +319,7 @@ export default function FacultyDashboardPage() {
                 </h2>
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                Coordinator guidance given for batches. Review suggestions, check student answers & provide faculty remarks.
+                Cohort-wide review suggestions & guidelines posted by coordinator. Provide guide feedback below.
               </p>
             </div>
 

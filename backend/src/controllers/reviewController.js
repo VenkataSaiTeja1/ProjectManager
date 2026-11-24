@@ -51,9 +51,11 @@ const getAll = asyncHandler(async (req, res) => {
     [...params, limit, offset]
   );
 
-  // Attach remarks / answers to each review so students and faculty can view responses directly
+  // Attach remarks and batch-specific comments to each review
   if (rows.length > 0) {
     const reviewIds = rows.map(r => r.id);
+
+    // 1. General remarks
     const { rows: allRemarks } = await query(
       `SELECT rr.*, u.name as user_name, u.role as user_role, u.roll_number as user_roll_number,
               t.name as team_name, t.project_title
@@ -71,8 +73,44 @@ const getAll = asyncHandler(async (req, res) => {
       remarksByReview[rem.review_id].push(rem);
     }
 
+    // 2. Batch-specific comments & solutions (filtered by role)
+    const bcConditions = ['bc.review_id = ANY($1::int[])'];
+    const bcParams = [reviewIds];
+    let bcIdx = 2;
+
+    if (req.user.role === 'student') {
+      bcConditions.push(`bc.team_id IN (SELECT team_id FROM team_members WHERE user_id = $${bcIdx++})`);
+      bcParams.push(req.user.id);
+    } else if (req.user.role === 'faculty') {
+      bcConditions.push(`bc.team_id IN (SELECT id FROM teams WHERE guide_id = $${bcIdx++})`);
+      bcParams.push(req.user.id);
+    }
+
+    const { rows: allBatchComments } = await query(
+      `SELECT bc.*,
+              t.name as team_name, t.project_title,
+              guide.name as guide_name, guide.roll_number as guide_roll_number,
+              lead.name as lead_name, lead.roll_number as lead_roll_number,
+              submitter.name as submitter_name, submitter.roll_number as submitter_roll_number
+       FROM weekly_review_batch_comments bc
+       JOIN teams t ON bc.team_id = t.id
+       LEFT JOIN users guide ON t.guide_id = guide.id
+       LEFT JOIN users lead ON t.lead_id = lead.id
+       LEFT JOIN users submitter ON bc.solution_submitted_by = submitter.id
+       WHERE ${bcConditions.join(' AND ')}
+       ORDER BY t.id ASC`,
+      bcParams
+    );
+
+    const batchCommentsByReview = {};
+    for (const bc of allBatchComments) {
+      if (!batchCommentsByReview[bc.review_id]) batchCommentsByReview[bc.review_id] = [];
+      batchCommentsByReview[bc.review_id].push(bc);
+    }
+
     for (const r of rows) {
       r.remarks = remarksByReview[r.id] || [];
+      r.batch_comments = batchCommentsByReview[r.id] || [];
     }
   }
 
@@ -108,7 +146,7 @@ const getById = asyncHandler(async (req, res) => {
     [rows[0].batch_id, req.params.id]
   );
 
-  // Get remarks and answers
+  // Get general remarks and answers
   const { rows: remarks } = await query(
     `SELECT rr.*, u.name as user_name, u.role as user_role, u.roll_number as user_roll_number,
             t.name as team_name, t.project_title
@@ -119,7 +157,36 @@ const getById = asyncHandler(async (req, res) => {
     [req.params.id]
   );
 
-  return successResponse(res, { ...rows[0], acks, notSeen, remarks });
+  // Get batch-specific comments and submitted solutions
+  const bcConditions = ['bc.review_id = $1'];
+  const bcParams = [req.params.id];
+  let bcIdx = 2;
+
+  if (req.user.role === 'student') {
+    bcConditions.push(`bc.team_id IN (SELECT team_id FROM team_members WHERE user_id = $${bcIdx++})`);
+    bcParams.push(req.user.id);
+  } else if (req.user.role === 'faculty') {
+    bcConditions.push(`bc.team_id IN (SELECT id FROM teams WHERE guide_id = $${bcIdx++})`);
+    bcParams.push(req.user.id);
+  }
+
+  const { rows: batch_comments } = await query(
+    `SELECT bc.*,
+            t.name as team_name, t.project_title,
+            guide.name as guide_name, guide.roll_number as guide_roll_number,
+            lead.name as lead_name, lead.roll_number as lead_roll_number,
+            submitter.name as submitter_name, submitter.roll_number as submitter_roll_number
+     FROM weekly_review_batch_comments bc
+     JOIN teams t ON bc.team_id = t.id
+     LEFT JOIN users guide ON t.guide_id = guide.id
+     LEFT JOIN users lead ON t.lead_id = lead.id
+     LEFT JOIN users submitter ON bc.solution_submitted_by = submitter.id
+     WHERE ${bcConditions.join(' AND ')}
+     ORDER BY t.id ASC`,
+    bcParams
+  );
+
+  return successResponse(res, { ...rows[0], acks, notSeen, remarks, batch_comments });
 });
 
 const create = asyncHandler(async (req, res) => {
@@ -228,7 +295,6 @@ const addRemark = asyncHandler(async (req, res) => {
     [review_id, finalTeamId, req.user.id, remark, status || 'pending']
   );
 
-  // Return formatted remark with user information
   const createdRemark = {
     ...rows[0],
     user_name: req.user.name,
@@ -261,4 +327,219 @@ const updateRemark = asyncHandler(async (req, res) => {
   return successResponse(res, rows[0], 'Remark updated');
 });
 
-module.exports = { getAll, getById, create, update, remove, acknowledge, addRemark, updateRemark };
+// ==========================================
+// Batch-Specific Comments & Solution Handlers
+// ==========================================
+
+const getBatchComments = asyncHandler(async (req, res) => {
+  const reviewId = parseInt(req.params.id, 10);
+  const conditions = ['bc.review_id = $1'];
+  const params = [reviewId];
+  let idx = 2;
+
+  if (req.user.role === 'student') {
+    conditions.push(`bc.team_id IN (SELECT team_id FROM team_members WHERE user_id = $${idx++})`);
+    params.push(req.user.id);
+  } else if (req.user.role === 'faculty') {
+    conditions.push(`bc.team_id IN (SELECT id FROM teams WHERE guide_id = $${idx++})`);
+    params.push(req.user.id);
+  }
+
+  const { rows } = await query(
+    `SELECT bc.*,
+            t.name as team_name, t.project_title,
+            guide.name as guide_name, guide.roll_number as guide_roll_number,
+            lead.name as lead_name, lead.roll_number as lead_roll_number,
+            submitter.name as submitter_name, submitter.role as submitter_role, submitter.roll_number as submitter_roll_number
+     FROM weekly_review_batch_comments bc
+     JOIN teams t ON bc.team_id = t.id
+     LEFT JOIN users guide ON t.guide_id = guide.id
+     LEFT JOIN users lead ON t.lead_id = lead.id
+     LEFT JOIN users submitter ON bc.solution_submitted_by = submitter.id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY t.id ASC`,
+    params
+  );
+
+  return successResponse(res, rows);
+});
+
+const saveBatchComment = asyncHandler(async (req, res) => {
+  const reviewId = parseInt(req.params.id, 10);
+  const { team_id, comments, action_items } = req.body;
+
+  if (!team_id || !comments || !comments.trim()) {
+    throw new AppError('team_id and comments are required', 400);
+  }
+
+  const { rows } = await query(
+    `INSERT INTO weekly_review_batch_comments (review_id, team_id, comments, action_items, status)
+     VALUES ($1, $2, $3, $4, 'pending')
+     ON CONFLICT (review_id, team_id) DO UPDATE
+     SET comments = EXCLUDED.comments,
+         action_items = EXCLUDED.action_items,
+         updated_at = NOW()
+     RETURNING *`,
+    [reviewId, team_id, comments.trim(), JSON.stringify(action_items || [])]
+  );
+
+  // Notify team members and guide
+  const { rows: members } = await query(
+    `SELECT tm.user_id FROM team_members tm WHERE tm.team_id = $1
+     UNION
+     SELECT t.guide_id FROM teams t WHERE t.id = $1 AND t.guide_id IS NOT NULL`,
+    [team_id]
+  );
+
+  const { rows: teamRow } = await query('SELECT name FROM teams WHERE id = $1', [team_id]);
+  const teamName = teamRow[0]?.name || 'Your batch';
+
+  for (const m of members) {
+    if (m.user_id) {
+      await query(
+        `INSERT INTO notifications (user_id, type, title, message, entity, entity_id)
+         VALUES ($1, 'review', 'Weekly Review Comments for ' || $2, 'Coordinator posted review comments for your batch. Please submit a solution.', 'weekly_reviews', $3)`,
+        [m.user_id, teamName, reviewId]
+      );
+    }
+  }
+
+  await logAudit(req.user.id, 'save_batch_comment', 'weekly_review_batch_comments', rows[0].id, {
+    review_id: reviewId,
+    team_id,
+  });
+
+  return successResponse(res, rows[0], 'Batch comments saved successfully');
+});
+
+const submitSolution = asyncHandler(async (req, res) => {
+  const commentId = parseInt(req.params.commentId, 10);
+  const { solution_text, solution_link } = req.body;
+
+  if (!solution_text || !solution_text.trim()) {
+    throw new AppError('Solution description is required', 400);
+  }
+
+  const { rows: commentRows } = await query(
+    `SELECT bc.*, t.name as team_name, wr.week_no
+     FROM weekly_review_batch_comments bc
+     JOIN teams t ON bc.team_id = t.id
+     JOIN weekly_reviews wr ON bc.review_id = wr.id
+     WHERE bc.id = $1`,
+    [commentId]
+  );
+
+  if (commentRows.length === 0) throw new AppError('Batch comment not found', 404);
+  const bc = commentRows[0];
+
+  // Access check
+  if (req.user.role === 'student') {
+    const { rows: memCheck } = await query(
+      'SELECT 1 FROM team_members WHERE team_id = $1 AND user_id = $2',
+      [bc.team_id, req.user.id]
+    );
+    if (memCheck.length === 0) {
+      throw new AppError('You can only submit solutions for your assigned batch', 403);
+    }
+  } else if (req.user.role === 'faculty') {
+    const { rows: guideCheck } = await query(
+      'SELECT 1 FROM teams WHERE id = $1 AND guide_id = $2',
+      [bc.team_id, req.user.id]
+    );
+    if (guideCheck.length === 0) {
+      throw new AppError('You can only submit solutions for teams you guide', 403);
+    }
+  }
+
+  const { rows } = await query(
+    `UPDATE weekly_review_batch_comments
+     SET solution_text = $1,
+         solution_link = $2,
+         solution_submitted_by = $3,
+         solution_submitted_at = NOW(),
+         status = 'submitted',
+         updated_at = NOW()
+     WHERE id = $4
+     RETURNING *`,
+    [solution_text.trim(), solution_link ? solution_link.trim() : null, req.user.id, commentId]
+  );
+
+  // Notify coordinator (admin)
+  const { rows: admins } = await query("SELECT id FROM users WHERE role = 'admin'");
+  for (const a of admins) {
+    await query(
+      `INSERT INTO notifications (user_id, type, title, message, entity, entity_id)
+       VALUES ($1, 'review', 'Solution Submitted by ' || $2, $3, 'weekly_reviews', $4)`,
+      [a.id, bc.team_name, `${bc.team_name} submitted a solution for Week ${bc.week_no} review comments.`, bc.review_id]
+    );
+  }
+
+  await logAudit(req.user.id, 'submit_solution', 'weekly_review_batch_comments', commentId, {
+    team_id: bc.team_id,
+  });
+
+  return successResponse(res, rows[0], 'Solution submitted successfully');
+});
+
+const updateSolutionStatus = asyncHandler(async (req, res) => {
+  const commentId = parseInt(req.params.commentId, 10);
+  const { status, coordinator_feedback } = req.body;
+
+  if (!['approved', 'needs_revision', 'pending', 'submitted'].includes(status)) {
+    throw new AppError('Invalid status', 400);
+  }
+
+  const { rows } = await query(
+    `UPDATE weekly_review_batch_comments
+     SET status = $1,
+         coordinator_feedback = $2,
+         updated_at = NOW()
+     WHERE id = $3
+     RETURNING *`,
+    [status, coordinator_feedback ? coordinator_feedback.trim() : null, commentId]
+  );
+
+  if (rows.length === 0) throw new AppError('Batch comment not found', 404);
+
+  // Notify batch members and guide
+  const bc = rows[0];
+  const { rows: members } = await query(
+    `SELECT tm.user_id FROM team_members tm WHERE tm.team_id = $1
+     UNION
+     SELECT t.guide_id FROM teams t WHERE t.id = $1 AND t.guide_id IS NOT NULL`,
+    [bc.team_id]
+  );
+
+  const statusTitle = status === 'approved' ? 'Solution Approved! 🎉' : 'Solution Needs Revision ⚠️';
+  const statusMsg = status === 'approved'
+    ? 'Coordinator verified and approved your batch solution.'
+    : `Coordinator requested revisions: ${coordinator_feedback || 'Please update and resubmit.'}`;
+
+  for (const m of members) {
+    if (m.user_id) {
+      await query(
+        `INSERT INTO notifications (user_id, type, title, message, entity, entity_id)
+         VALUES ($1, 'review', $2, $3, 'weekly_reviews', $4)`,
+        [m.user_id, statusTitle, statusMsg, bc.review_id]
+      );
+    }
+  }
+
+  await logAudit(req.user.id, 'update_solution_status', 'weekly_review_batch_comments', commentId, { status });
+  return successResponse(res, rows[0], `Solution marked as ${status}`);
+});
+
+module.exports = {
+  getAll,
+  getById,
+  create,
+  update,
+  remove,
+  acknowledge,
+  addRemark,
+  updateRemark,
+  getBatchComments,
+  saveBatchComment,
+  submitSolution,
+  updateSolutionStatus,
+};

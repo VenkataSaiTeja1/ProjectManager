@@ -136,31 +136,22 @@ const facultyDashboard = asyncHandler(async (req, res) => {
     [req.user.id]
   );
 
-  if (wrRows.length > 0) {
-    const reviewIds = wrRows.map(r => r.id);
-    const { rows: allRemarks } = await query(
-      `SELECT rr.*, u.name as user_name, u.role as user_role, u.roll_number as user_roll_number,
-              t.name as team_name
-       FROM review_remarks rr
-       JOIN users u ON rr.user_id = u.id
-       LEFT JOIN teams t ON rr.team_id = t.id
-       WHERE rr.review_id = ANY($1::int[])
-       ORDER BY rr.created_at ASC`,
-      [reviewIds]
-    );
+  // Batch comments for teams guided by this faculty
+  const { rows: guidedBatchComments } = await query(
+    `SELECT bc.*, t.name as team_name, t.project_title, wr.week_no, wr.review_date,
+            lead.name as lead_name, lead.roll_number as lead_roll_number,
+            submitter.name as submitter_name, submitter.roll_number as submitter_roll_number
+     FROM weekly_review_batch_comments bc
+     JOIN teams t ON bc.team_id = t.id
+     JOIN weekly_reviews wr ON bc.review_id = wr.id
+     LEFT JOIN users lead ON t.lead_id = lead.id
+     LEFT JOIN users submitter ON bc.solution_submitted_by = submitter.id
+     WHERE t.guide_id = $1
+     ORDER BY wr.review_date DESC, t.name ASC`,
+    [req.user.id]
+  );
 
-    const remarksByReview = {};
-    for (const rem of allRemarks) {
-      if (!remarksByReview[rem.review_id]) remarksByReview[rem.review_id] = [];
-      remarksByReview[rem.review_id].push(rem);
-    }
-
-    for (const r of wrRows) {
-      r.remarks = remarksByReview[r.id] || [];
-    }
-  }
-
-  return successResponse(res, { teams, recentUpdates, weeklyReviews: wrRows });
+  return successResponse(res, { teams, recentUpdates, weeklyReviews: wrRows, guidedBatchComments });
 });
 
 const studentDashboard = asyncHandler(async (req, res) => {
@@ -184,7 +175,7 @@ const studentDashboard = asyncHandler(async (req, res) => {
   const isLead = team ? team.lead_id === req.user.id : false;
   const studentBatchId = team ? team.batch_id : req.user.batch_id;
 
-  // Fetch recent weekly reviews with coordinator suggestions for student's batch
+  // Fetch recent weekly reviews
   let weeklyReviews = [];
   if (studentBatchId) {
     const { rows: wrRows } = await query(
@@ -197,31 +188,26 @@ const studentDashboard = asyncHandler(async (req, res) => {
        LIMIT 4`,
       [studentBatchId]
     );
-
-    if (wrRows.length > 0) {
-      const reviewIds = wrRows.map(r => r.id);
-      const { rows: allRemarks } = await query(
-        `SELECT rr.*, u.name as user_name, u.role as user_role, u.roll_number as user_roll_number,
-                t.name as team_name
-         FROM review_remarks rr
-         JOIN users u ON rr.user_id = u.id
-         LEFT JOIN teams t ON rr.team_id = t.id
-         WHERE rr.review_id = ANY($1::int[])
-         ORDER BY rr.created_at ASC`,
-        [reviewIds]
-      );
-
-      const remarksByReview = {};
-      for (const rem of allRemarks) {
-        if (!remarksByReview[rem.review_id]) remarksByReview[rem.review_id] = [];
-        remarksByReview[rem.review_id].push(rem);
-      }
-
-      for (const r of wrRows) {
-        r.remarks = remarksByReview[r.id] || [];
-      }
-    }
     weeklyReviews = wrRows;
+  }
+
+  // Fetch batch comments given specifically to this student's batch / team
+  let teamBatchComments = [];
+  if (team) {
+    const { rows: bcRows } = await query(
+      `SELECT bc.*, wr.week_no, wr.review_date, u.name as created_by_name,
+              t.name as team_name, t.project_title,
+              submitter.name as submitter_name, submitter.roll_number as submitter_roll_number
+       FROM weekly_review_batch_comments bc
+       JOIN weekly_reviews wr ON bc.review_id = wr.id
+       JOIN teams t ON bc.team_id = t.id
+       LEFT JOIN users u ON wr.created_by = u.id
+       LEFT JOIN users submitter ON bc.solution_submitted_by = submitter.id
+       WHERE bc.team_id = $1
+       ORDER BY wr.review_date DESC, wr.week_no DESC`,
+      [team.id]
+    );
+    teamBatchComments = bcRows;
   }
 
   if (!team) {
@@ -242,6 +228,7 @@ const studentDashboard = asyncHandler(async (req, res) => {
       announcements,
       papers: [],
       weeklyReviews,
+      teamBatchComments: [],
     });
   }
 
@@ -284,6 +271,7 @@ const studentDashboard = asyncHandler(async (req, res) => {
     announcements,
     papers,
     weeklyReviews,
+    teamBatchComments,
   });
 });
 

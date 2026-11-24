@@ -20,11 +20,15 @@ import {
   FiUsers,
   FiTrash2,
   FiMessageSquare,
+  FiCheck,
+  FiAlertTriangle,
+  FiSend,
 } from 'react-icons/fi';
 
 export default function AdminReviewsPage() {
   const [reviews, setReviews] = useState([]);
   const [batches, setBatches] = useState([]);
+  const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBatch, setSelectedBatch] = useState('');
 
@@ -40,15 +44,37 @@ export default function AdminReviewsPage() {
   });
   const [saving, setSaving] = useState(false);
 
+  // Give Comments to Batch Modal
+  const [batchCommentModal, setBatchCommentModal] = useState({
+    isOpen: false,
+    reviewId: null,
+    teamId: '',
+    comments: '',
+    action_items: [{ item: '', due_date: '' }],
+    saving: false,
+  });
+
+  // Review Submitted Solution Modal
+  const [solutionModal, setSolutionModal] = useState({
+    isOpen: false,
+    batchComment: null,
+    coordinatorFeedback: '',
+    saving: false,
+  });
+
   // Seen & Responses Modal
   const [seenModal, setSeenModal] = useState({ isOpen: false, review: null, details: null, loading: false });
 
-  const fetchBatches = async () => {
+  const fetchBatchesAndTeams = async () => {
     try {
-      const res = await api.get('/batches');
-      setBatches(res.data || []);
-      if (res.data?.length > 0 && !selectedBatch) {
-        setSelectedBatch(res.data[0].id);
+      const [bRes, tRes] = await Promise.all([
+        api.get('/batches'),
+        api.get('/teams', { limit: 100 }),
+      ]);
+      setBatches(bRes.data || []);
+      setTeams(tRes.data || []);
+      if (bRes.data?.length > 0 && !selectedBatch) {
+        setSelectedBatch(bRes.data[0].id);
       }
     } catch (e) {
       console.error(e);
@@ -68,7 +94,7 @@ export default function AdminReviewsPage() {
   };
 
   useEffect(() => {
-    fetchBatches();
+    fetchBatchesAndTeams();
   }, []);
 
   useEffect(() => {
@@ -161,6 +187,71 @@ export default function AdminReviewsPage() {
     }
   };
 
+  // Open Give Comments to Batch Modal
+  const openGiveBatchCommentModal = (reviewId, teamId = '', existingComments = '') => {
+    setBatchCommentModal({
+      isOpen: true,
+      reviewId,
+      teamId: teamId ? teamId.toString() : (teams[0]?.id ? teams[0].id.toString() : ''),
+      comments: existingComments || '',
+      action_items: [{ item: '', due_date: '' }],
+      saving: false,
+    });
+  };
+
+  const handleSaveBatchComment = async (e) => {
+    e.preventDefault();
+    if (!batchCommentModal.teamId || !batchCommentModal.comments.trim()) {
+      toast.error('Please select a batch and enter comments');
+      return;
+    }
+
+    try {
+      setBatchCommentModal(prev => ({ ...prev, saving: true }));
+      await api.post(`/reviews/${batchCommentModal.reviewId}/batch-comments`, {
+        team_id: parseInt(batchCommentModal.teamId, 10),
+        comments: batchCommentModal.comments.trim(),
+        action_items: batchCommentModal.action_items.filter(a => a.item && a.item.trim() !== ''),
+      });
+      toast.success('Comments saved and notified to that batch & faculty guide');
+      setBatchCommentModal({ isOpen: false, reviewId: null, teamId: '', comments: '', action_items: [], saving: false });
+      fetchReviews();
+    } catch (err) {
+      toast.error(err.message || 'Failed to save batch comments');
+    } finally {
+      setBatchCommentModal(prev => ({ ...prev, saving: false }));
+    }
+  };
+
+  // Solution review handling
+  const openReviewSolutionModal = (bc) => {
+    setSolutionModal({
+      isOpen: true,
+      batchComment: bc,
+      coordinatorFeedback: bc.coordinator_feedback || '',
+      saving: false,
+    });
+  };
+
+  const handleUpdateSolutionStatus = async (status) => {
+    if (!solutionModal.batchComment) return;
+
+    try {
+      setSolutionModal(prev => ({ ...prev, saving: true }));
+      await api.put(`/reviews/batch-comments/${solutionModal.batchComment.id}/status`, {
+        status,
+        coordinator_feedback: solutionModal.coordinatorFeedback,
+      });
+      toast.success(`Solution marked as ${status === 'approved' ? 'Approved' : 'Needs Revision'}`);
+      setSolutionModal({ isOpen: false, batchComment: null, coordinatorFeedback: '', saving: false });
+      fetchReviews();
+    } catch (err) {
+      toast.error(err.message || 'Failed to update solution status');
+    } finally {
+      setSolutionModal(prev => ({ ...prev, saving: false }));
+    }
+  };
+
   const openSeenModal = async (review) => {
     setSeenModal({ isOpen: true, review, details: null, loading: true });
     try {
@@ -172,27 +263,15 @@ export default function AdminReviewsPage() {
     }
   };
 
-  const handleUpdateRemarkStatus = async (remarkId, newStatus) => {
-    try {
-      await api.put(`/reviews/remarks/${remarkId}`, { status: newStatus });
-      toast.success(`Remark status updated to ${newStatus}`);
-      if (seenModal.review) {
-        const res = await api.get(`/reviews/${seenModal.review.id}`);
-        setSeenModal(prev => ({ ...prev, details: res.data }));
-      }
-      fetchReviews();
-    } catch (err) {
-      toast.error('Failed to update remark status');
-    }
-  };
-
   return (
     <AppLayout requiredRole="admin">
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Weekly Reviews & Feedback</h1>
-            <p className="text-sm text-gray-500">Post weekly milestone reviews, action items, audit student acknowledgements & view responses</p>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Weekly Reviews & Batch Comments</h1>
+            <p className="text-sm text-gray-500">
+              Conduct weekly reviews, give specific comments to each batch (Batch 1 - 16), inspect submitted solutions & verify student progress
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -206,10 +285,10 @@ export default function AdminReviewsPage() {
           </div>
         </div>
 
-        {/* Batch Filter */}
+        {/* Batch Cohort Filter */}
         <div className="card p-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <label className="text-xs font-bold text-gray-500 uppercase">Viewing Batch:</label>
+            <label className="text-xs font-bold text-gray-500 uppercase">Viewing Cohort:</label>
             <select
               value={selectedBatch}
               onChange={(e) => setSelectedBatch(e.target.value)}
@@ -232,24 +311,26 @@ export default function AdminReviewsPage() {
         {loading ? (
           <Loading text="Loading reviews..." />
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {reviews.length === 0 ? (
               <div className="card text-center py-12 text-gray-400 text-sm">
-                No weekly reviews posted for this batch yet. Click &quot;Post Weekly Review&quot; above.
+                No weekly reviews posted for this batch yet. Click &quot;Post Weekly Review&quot; above to create Week 1 Review.
               </div>
             ) : (
               reviews.map((r) => {
                 const totalAudience = parseInt(r.total_audience || 0, 10);
                 const seenCount = parseInt(r.seen_count || 0, 10);
-                const answersCount = r.remarks?.length || 0;
+                const batchCommentsList = r.batch_comments || [];
+                const submittedSolutionsCount = batchCommentsList.filter(b => b.status === 'submitted' || b.status === 'approved').length;
 
                 return (
-                  <div key={r.id} className="card p-6 space-y-4 hover:border-gray-300 transition-all">
+                  <div key={r.id} className="card p-6 space-y-5 hover:border-gray-300 transition-all border-2 border-primary-100">
+                    {/* Header */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="text-base font-black text-gray-900">Week {r.week_no} Review</span>
-                          <span className="text-xs bg-primary-50 text-primary-700 font-bold px-2 py-0.5 rounded-full">
+                          <span className="text-lg font-black text-gray-900">Week {r.week_no} Review Session</span>
+                          <span className="text-xs bg-primary-50 text-primary-700 font-bold px-2.5 py-0.5 rounded-full">
                             {r.batch_name}
                           </span>
                         </div>
@@ -260,12 +341,20 @@ export default function AdminReviewsPage() {
 
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={() => openGiveBatchCommentModal(r.id)}
+                          className="btn-primary text-xs inline-flex items-center gap-1.5"
+                        >
+                          <FiPlus className="w-3.5 h-3.5" />
+                          Give Comments to a Batch
+                        </button>
+
+                        <button
                           onClick={() => openSeenModal(r)}
                           className="btn-secondary text-xs inline-flex items-center gap-1.5"
-                          title="View student acknowledgements & team answers"
+                          title="View student acknowledgements"
                         >
-                          <FiMessageSquare className="w-3.5 h-3.5 text-primary-600" />
-                          Answers ({answersCount}) & Seen ({seenCount}/{totalAudience})
+                          <FiEye className="w-3.5 h-3.5 text-primary-600" />
+                          Seen ({seenCount}/{totalAudience})
                         </button>
 
                         <button
@@ -286,98 +375,179 @@ export default function AdminReviewsPage() {
                       </div>
                     </div>
 
-                    <div>
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
-                        Coordinator Suggestions & Guidance
-                      </h4>
-                      <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
-                        {r.suggestions || 'No general suggestions noted.'}
-                      </p>
-                    </div>
+                    {/* General Suggestions */}
+                    {r.suggestions && (
+                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
+                          Cohort-Wide General Suggestions & Guidance
+                        </h4>
+                        <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">
+                          {r.suggestions}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Action Items */}
                     {r.action_items && r.action_items.length > 0 && (
-                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-2">
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-gray-600">
-                          Milestone Action Items
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {r.action_items.map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-start gap-2 bg-white p-2.5 rounded-lg border border-gray-100 text-xs text-gray-800"
-                            >
-                              <FiCheckCircle className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                              <div className="flex-1">
-                                <p className="font-medium">{item.item}</p>
-                                {item.due_date && (
-                                  <span className="text-[10px] text-gray-400 block mt-0.5 font-mono">
-                                    Due: {item.due_date}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {r.attachment_link && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <FiPaperclip className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="text-gray-500">Reference Guidelines:</span>
-                        <a
-                          href={r.attachment_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary-600 font-semibold hover:underline inline-flex items-center gap-1"
-                        >
-                          {r.attachment_link}
-                          <FiExternalLink className="w-3 h-3" />
-                        </a>
-                      </div>
-                    )}
-
-                    {/* Student & Faculty Answers / Remarks Section */}
-                    {r.remarks && r.remarks.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold uppercase tracking-wider text-primary-800 flex items-center gap-1.5">
-                            <FiMessageSquare className="w-3.5 h-3.5 text-primary-600" />
-                            Batch Answers & Remarks ({r.remarks.length})
-                          </span>
-                        </div>
-
-                        <div className="space-y-2">
-                          {r.remarks.map((rem) => (
-                            <div key={rem.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs space-y-1">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-bold text-gray-900">{rem.user_name}</span>
-                                  {rem.user_roll_number && (
-                                    <span className="font-mono text-gray-500 font-semibold">[{rem.user_roll_number}]</span>
-                                  )}
-                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                    rem.user_role === 'student' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-                                  }`}>
-                                    {rem.user_role}
-                                  </span>
-                                  {rem.team_name && (
-                                    <span className="text-gray-400 font-medium">({rem.team_name})</span>
-                                  )}
-                                </div>
-                                <span className="text-[10px] text-gray-400">
-                                  {new Date(rem.created_at).toLocaleString()}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        {r.action_items.map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-start gap-2 bg-white p-2.5 rounded-lg border border-gray-100 text-xs text-gray-800"
+                          >
+                            <FiCheckCircle className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <p className="font-medium">{item.item}</p>
+                              {item.due_date && (
+                                <span className="text-[10px] text-gray-400 block mt-0.5 font-mono">
+                                  Due: {item.due_date}
                                 </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ========================================================= */}
+                    {/* BATCH-SPECIFIC COMMENTS & SOLUTIONS SECTION (CORE REQUIREMENT) */}
+                    {/* ========================================================= */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-black text-gray-900 flex items-center gap-2">
+                            <span>Comments Given to Each Batch & Submitted Solutions</span>
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700">
+                              {batchCommentsList.length} Batches Commented • {submittedSolutionsCount} Solutions Submitted
+                            </span>
+                          </h3>
+                          <p className="text-xs text-gray-400">
+                            Each batch receives specific feedback; their students and guide view the comments and submit solutions.
+                          </p>
+                        </div>
+                      </div>
+
+                      {batchCommentsList.length === 0 ? (
+                        <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-200 text-xs text-amber-800 flex items-center justify-between">
+                          <span>No specific comments given to any project batch for Week {r.week_no} yet.</span>
+                          <button
+                            onClick={() => openGiveBatchCommentModal(r.id)}
+                            className="font-bold text-primary-700 hover:underline"
+                          >
+                            + Give Comments Now
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {batchCommentsList.map((bc) => (
+                            <div
+                              key={bc.id}
+                              className={`p-4 rounded-xl border text-xs space-y-2.5 ${
+                                bc.status === 'approved'
+                                  ? 'bg-emerald-50/30 border-emerald-200'
+                                  : bc.status === 'submitted'
+                                  ? 'bg-blue-50/40 border-blue-200'
+                                  : bc.status === 'needs_revision'
+                                  ? 'bg-rose-50/30 border-rose-200'
+                                  : 'bg-white border-gray-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-black text-sm text-gray-900">{bc.team_name}</span>
+                                    {bc.guide_name && (
+                                      <span className="text-[10px] text-gray-500 font-medium">Guide: {bc.guide_name}</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-primary-700 font-medium line-clamp-1">
+                                    {bc.project_title || 'Untitled Project'}
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  {bc.status === 'approved' && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                                      <FiCheck className="w-3 h-3" /> Approved
+                                    </span>
+                                  )}
+                                  {bc.status === 'submitted' && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                                      Solution Submitted
+                                    </span>
+                                  )}
+                                  {bc.status === 'needs_revision' && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                                      Needs Revision
+                                    </span>
+                                  )}
+                                  {bc.status === 'pending' && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                                      Pending Solution
+                                    </span>
+                                  )}
+
+                                  <button
+                                    onClick={() => openGiveBatchCommentModal(r.id, bc.team_id, bc.comments)}
+                                    className="p-1 text-gray-400 hover:text-amber-600 rounded hover:bg-white transition-colors"
+                                    title="Edit Comments for this Batch"
+                                  >
+                                    <FiEdit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
-                              <p className="text-gray-700 whitespace-pre-line leading-relaxed pl-1">
-                                {rem.remark}
-                              </p>
+
+                              {/* Coordinator comments */}
+                              <div className="bg-white/80 p-2.5 rounded-lg border border-gray-100 text-gray-700">
+                                <strong className="text-[10px] uppercase font-bold text-gray-400 block mb-0.5">
+                                  Coordinator Comments:
+                                </strong>
+                                <p className="whitespace-pre-line text-xs">{bc.comments}</p>
+                              </div>
+
+                              {/* Solution Details if Submitted */}
+                              {bc.solution_text ? (
+                                <div className="p-2.5 rounded-lg bg-white border border-gray-200 space-y-1.5">
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <strong className="text-emerald-800 font-bold flex items-center gap-1">
+                                      <FiCheckCircle className="w-3 h-3 text-emerald-600" />
+                                      Submitted Solution ({bc.submitter_name || 'Student'})
+                                    </strong>
+                                    <span className="text-[10px] text-gray-400">
+                                      {new Date(bc.solution_submitted_at).toLocaleDateString()}
+                                    </span>
+                                  </div>
+                                  <p className="text-gray-700 line-clamp-2 text-xs">{bc.solution_text}</p>
+                                  {bc.solution_link && (
+                                    <a
+                                      href={bc.solution_link}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-primary-600 hover:underline font-semibold inline-flex items-center gap-1 text-[11px]"
+                                    >
+                                      Solution Attachment / Link <FiExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+
+                                  <div className="pt-1 flex items-center justify-between">
+                                    <button
+                                      onClick={() => openReviewSolutionModal(bc)}
+                                      className="btn-secondary text-[10px] py-1 px-2.5 font-bold text-primary-700"
+                                    >
+                                      Review & Grade Solution &rarr;
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-gray-400 italic">
+                                  Waiting for {bc.team_name} students / guide to submit solution.
+                                </p>
+                              )}
                             </div>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 );
               })
@@ -386,17 +556,161 @@ export default function AdminReviewsPage() {
         )}
       </div>
 
+      {/* Give Comments to Batch Modal */}
+      <Modal
+        isOpen={batchCommentModal.isOpen}
+        onClose={() => setBatchCommentModal(prev => ({ ...prev, isOpen: false }))}
+        title="Give Weekly Review Comments to a Batch"
+        maxWidth="max-w-xl"
+      >
+        <form onSubmit={handleSaveBatchComment} className="space-y-4">
+          <div>
+            <label className="label-text">Select Batch / Team</label>
+            <select
+              required
+              value={batchCommentModal.teamId}
+              onChange={(e) => setBatchCommentModal({ ...batchCommentModal, teamId: e.target.value })}
+              className="input-field font-semibold"
+            >
+              <option value="">Select Batch</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} — {t.project_title || 'Untitled'} (Guide: {t.guide_name || 'Unassigned'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="label-text">Comments / Feedback / Requirements for this Batch</label>
+            <textarea
+              required
+              rows={5}
+              value={batchCommentModal.comments}
+              onChange={(e) => setBatchCommentModal({ ...batchCommentModal, comments: e.target.value })}
+              placeholder="e.g. 1. Complete API integration by Friday. 2. Implement unit tests for auth service. 3. Fix database schema relationships."
+              className="input-field"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              These comments will be displayed on this batch&apos;s student dashboard and their faculty guide dashboard. They will be required to submit a solution.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setBatchCommentModal(prev => ({ ...prev, isOpen: false }))}
+              className="btn-secondary text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={batchCommentModal.saving}
+              className="btn-primary text-xs"
+            >
+              {batchCommentModal.saving ? 'Saving...' : 'Post Comments to Batch'}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Review Submitted Solution Modal */}
+      <Modal
+        isOpen={solutionModal.isOpen}
+        onClose={() => setSolutionModal(prev => ({ ...prev, isOpen: false }))}
+        title={`Review Solution from ${solutionModal.batchComment?.team_name || 'Batch'}`}
+        maxWidth="max-w-2xl"
+      >
+        {solutionModal.batchComment && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 p-3 rounded-xl border border-gray-100 text-xs space-y-1">
+              <strong className="text-gray-500 uppercase font-bold text-[10px] block">
+                Coordinator&apos;s Original Comments:
+              </strong>
+              <p className="text-gray-800 whitespace-pre-line font-medium">
+                {solutionModal.batchComment.comments}
+              </p>
+            </div>
+
+            <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <strong className="text-emerald-900 uppercase font-bold text-[11px]">
+                  Batch Solution Submitted by {solutionModal.batchComment.submitter_name || 'Student'}:
+                </strong>
+                <span className="text-[10px] text-gray-500">
+                  {new Date(solutionModal.batchComment.solution_submitted_at).toLocaleString()}
+                </span>
+              </div>
+              <p className="text-gray-800 whitespace-pre-line leading-relaxed text-sm bg-white p-3 rounded-lg border border-emerald-100">
+                {solutionModal.batchComment.solution_text}
+              </p>
+
+              {solutionModal.batchComment.solution_link && (
+                <div className="pt-1">
+                  <a
+                    href={solutionModal.batchComment.solution_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary-700 font-bold underline inline-flex items-center gap-1.5"
+                  >
+                    Open Solution Work Link / Drive / GitHub <FiExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="label-text">Coordinator Verification Remarks / Revision Notes (Optional)</label>
+              <textarea
+                rows={3}
+                value={solutionModal.coordinatorFeedback}
+                onChange={(e) => setSolutionModal({ ...solutionModal, coordinatorFeedback: e.target.value })}
+                placeholder="e.g. Solution verified. Good job on addressing the database indexes."
+                className="input-field text-xs"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setSolutionModal(prev => ({ ...prev, isOpen: false }))}
+                className="btn-secondary text-xs"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                disabled={solutionModal.saving}
+                onClick={() => handleUpdateSolutionStatus('needs_revision')}
+                className="px-4 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl font-bold text-xs hover:bg-rose-100 transition-colors"
+              >
+                Request Revision
+              </button>
+              <button
+                type="button"
+                disabled={solutionModal.saving}
+                onClick={() => handleUpdateSolutionStatus('approved')}
+                className="btn-primary text-xs bg-emerald-600 hover:bg-emerald-700 border-emerald-600"
+              >
+                ✓ Approve Solution
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Post / Edit Review Modal */}
       <Modal
         isOpen={reviewModal.isOpen}
         onClose={() => setReviewModal({ isOpen: false, isEditing: false, reviewId: null })}
-        title={reviewModal.isEditing ? 'Edit Weekly Review' : 'Post Weekly Review for Batch'}
+        title={reviewModal.isEditing ? 'Edit Weekly Review Session' : 'Post Weekly Review for Batch'}
         maxWidth="max-w-2xl"
       >
         <form onSubmit={handleSaveReview} className="space-y-4">
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="label-text">Batch</label>
+              <label className="label-text">Cohort</label>
               <select
                 required
                 value={formData.batch_id}
@@ -438,13 +752,12 @@ export default function AdminReviewsPage() {
           </div>
 
           <div>
-            <label className="label-text">Coordinator Suggestions & Feedback</label>
+            <label className="label-text">Cohort-Wide Suggestions & Overall Review Guidance</label>
             <textarea
-              required
               rows={4}
               value={formData.suggestions}
               onChange={(e) => setFormData({ ...formData, suggestions: e.target.value })}
-              placeholder="Enter comprehensive suggestions for this week (e.g. Ensure all teams complete database ER diagrams and prepare wireframe mockups)..."
+              placeholder="Enter general suggestions applicable to all batches (e.g. Ensure all teams complete architecture diagrams)..."
               className="input-field"
             />
           </div>
@@ -452,7 +765,7 @@ export default function AdminReviewsPage() {
           {/* Action Items Builder */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="label-text mb-0">Action Items & Deliverables</label>
+              <label className="label-text mb-0">General Milestone Deliverables</label>
               <button
                 type="button"
                 onClick={handleAddActionItem}
@@ -494,7 +807,7 @@ export default function AdminReviewsPage() {
           </div>
 
           <div>
-            <label className="label-text">Reference Material Link (Optional)</label>
+            <label className="label-text">Guidelines Link (Optional)</label>
             <input
               type="url"
               value={formData.attachment_link}
@@ -513,122 +826,41 @@ export default function AdminReviewsPage() {
               Cancel
             </button>
             <button type="submit" disabled={saving} className="btn-primary text-xs">
-              {saving ? 'Saving...' : reviewModal.isEditing ? 'Update Review' : 'Publish to Batch'}
+              {saving ? 'Saving...' : reviewModal.isEditing ? 'Update Review' : 'Publish Review'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Seen Acknowledgement & Answers Details Modal */}
+      {/* Seen Modal */}
       <Modal
         isOpen={seenModal.isOpen}
         onClose={() => setSeenModal({ isOpen: false, review: null, details: null, loading: false })}
-        title={`Week ${seenModal.review?.week_no} Responses & Acknowledgements`}
-        maxWidth="max-w-3xl"
+        title={`Week ${seenModal.review?.week_no} Acknowledgements`}
       >
         <div className="space-y-4">
-          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-            <p className="text-xs text-gray-500">
-              Audit student responses and acknowledgement status for this weekly review.
-            </p>
-            {seenModal.review && (
-              <ExcelExportBtn
-                endpoint="/reports/review-acks"
-                params={{ review_id: seenModal.review.id }}
-                filename={`review_acks_week_${seenModal.review.week_no}.xlsx`}
-                label="Export Acks Excel"
-              />
-            )}
-          </div>
-
           {seenModal.loading ? (
-            <Loading text="Loading details..." />
+            <Loading text="Loading..." />
           ) : (
-            <div className="space-y-4">
-              {/* Submitted Answers / Remarks */}
-              <div className="bg-primary-50/40 p-4 rounded-xl border border-primary-100">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-primary-900 mb-2 flex items-center justify-between">
-                  <span>Student & Faculty Answers ({seenModal.details?.remarks?.length || 0})</span>
-                </h4>
-                {seenModal.details?.remarks?.length === 0 ? (
-                  <p className="text-xs text-gray-400 py-2">No answers or comments submitted yet for this review.</p>
-                ) : (
-                  <div className="max-h-60 overflow-y-auto space-y-2 text-xs">
-                    {seenModal.details?.remarks?.map((rem) => (
-                      <div key={rem.id} className="p-3 bg-white rounded-lg border border-gray-100 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-gray-900">{rem.user_name}</span>
-                            {rem.user_roll_number && (
-                              <span className="font-mono text-gray-500 font-semibold">[{rem.user_roll_number}]</span>
-                            )}
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                              rem.user_role === 'student' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
-                            }`}>
-                              {rem.user_role}
-                            </span>
-                            {rem.team_name && <span className="text-gray-400 font-medium">({rem.team_name})</span>}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={rem.status || 'pending'}
-                              onChange={(e) => handleUpdateRemarkStatus(rem.id, e.target.value)}
-                              className="text-[10px] font-bold border border-gray-200 rounded px-1.5 py-0.5 outline-none"
-                            >
-                              <option value="pending">Pending</option>
-                              <option value="approved">Approved</option>
-                              <option value="needs_work">Needs Work</option>
-                            </select>
-                            <span className="text-[10px] text-gray-400">{new Date(rem.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          </div>
-                        </div>
-                        <p className="text-gray-700 whitespace-pre-line pl-0.5">{rem.remark}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Acknowledgement Seen/Unseen Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-2">
-                    Seen ({seenModal.details?.acks?.length || 0})
-                  </h4>
-                  <div className="max-h-52 overflow-y-auto space-y-1.5 divide-y divide-emerald-100/60 text-xs">
-                    {seenModal.details?.acks?.length === 0 ? (
-                      <p className="text-gray-400">No one has acknowledged yet.</p>
-                    ) : (
-                      seenModal.details?.acks?.map((a) => (
-                        <div key={a.user_id} className="pt-1.5">
-                          <span className="font-bold text-gray-800">{a.user_name}</span>
-                          {a.user_roll_number && <span className="text-primary-700 font-mono font-bold ml-1">[{a.user_roll_number}]</span>}
-                          <span className="text-[10px] text-gray-400 block">
-                            Seen: {new Date(a.seen_at).toLocaleString()}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-emerald-50 rounded-xl">
+                <span className="font-bold text-emerald-800 block mb-2">Seen ({seenModal.details?.acks?.length || 0})</span>
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {seenModal.details?.acks?.map((a) => (
+                    <div key={a.user_id} className="text-gray-700">
+                      {a.name || a.user_name}
+                    </div>
+                  ))}
                 </div>
-
-                <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-100">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-rose-800 mb-2">
-                    Not Seen ({seenModal.details?.notSeen?.length || 0})
-                  </h4>
-                  <div className="max-h-52 overflow-y-auto space-y-1.5 divide-y divide-rose-100/60 text-xs">
-                    {seenModal.details?.notSeen?.length === 0 ? (
-                      <p className="text-emerald-700 font-bold">All enrolled students have seen this review.</p>
-                    ) : (
-                      seenModal.details?.notSeen?.map((u) => (
-                        <div key={u.id} className="pt-1.5">
-                          <span className="font-semibold text-gray-700">{u.name}</span>
-                          {u.roll_number && <span className="text-primary-700 font-mono text-[11px] ml-1">[{u.roll_number}]</span>}
-                          {u.email && <span className="text-[10px] text-gray-400 block">{u.email}</span>}
-                        </div>
-                      ))
-                    )}
-                  </div>
+              </div>
+              <div className="p-3 bg-rose-50 rounded-xl">
+                <span className="font-bold text-rose-800 block mb-2">Not Seen ({seenModal.details?.notSeen?.length || 0})</span>
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {seenModal.details?.notSeen?.map((u) => (
+                    <div key={u.id} className="text-gray-700">
+                      {u.name}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
