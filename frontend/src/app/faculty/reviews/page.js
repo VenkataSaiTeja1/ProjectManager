@@ -14,6 +14,7 @@ import {
   FiCheckCircle,
   FiPaperclip,
   FiExternalLink,
+  FiSend,
 } from 'react-icons/fi';
 
 export default function FacultyReviewsPage() {
@@ -37,7 +38,9 @@ export default function FacultyReviewsPage() {
       ]);
       setReviews(rRes.data || []);
       setMyTeams(tRes.data || []);
-      if (tRes.data?.length > 0) setSelectedTeamId(tRes.data[0].id);
+      if (tRes.data?.length > 0 && !selectedTeamId) {
+        setSelectedTeamId(tRes.data[0].id.toString());
+      }
     } catch (err) {
       toast.error('Failed to load reviews');
     } finally {
@@ -51,17 +54,17 @@ export default function FacultyReviewsPage() {
 
   const handleSaveRemark = async (e) => {
     e.preventDefault();
-    if (!remarkText.trim() || !selectedTeamId) return;
+    if (!remarkText.trim()) return;
 
     try {
       setSavingRemark(true);
       await api.post('/reviews/remarks', {
         review_id: remarkModal.reviewId,
-        team_id: parseInt(selectedTeamId, 10),
+        team_id: selectedTeamId ? parseInt(selectedTeamId, 10) : null,
         remark: remarkText,
         status: remarkStatus,
       });
-      toast.success('Review remarks added for your team');
+      toast.success('Review remarks and answer submitted');
       setRemarkModal({ isOpen: false, reviewId: null });
       setRemarkText('');
       fetchData();
@@ -78,22 +81,22 @@ export default function FacultyReviewsPage() {
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">Weekly Review Suggestions & Remarks</h1>
           <p className="text-sm text-gray-500">
-            Coordinator guidelines for batches and submit faculty remarks (Approved / Needs Work) per team
+            Review coordinator guidance for batches, inspect student progress answers & submit faculty feedback per team
           </p>
         </div>
 
         {loading ? (
           <Loading text="Loading weekly reviews..." />
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {reviews.length === 0 ? (
               <div className="card text-center py-10 text-gray-400 text-sm">
                 No weekly reviews available for your batches.
               </div>
             ) : (
               reviews.map((r) => (
-                <div key={r.id} className="card p-6 space-y-4">
-                  <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div key={r.id} className="card p-6 space-y-4 hover:border-gray-300 transition-all">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-base font-black text-gray-900">Week {r.week_no} Review</span>
@@ -102,7 +105,7 @@ export default function FacultyReviewsPage() {
                         </span>
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        Date: {new Date(r.review_date).toLocaleDateString()} • Posted by {r.created_by_name}
+                        Conducted: {new Date(r.review_date).toLocaleDateString()} • Posted by {r.created_by_name}
                       </p>
                     </div>
 
@@ -115,15 +118,17 @@ export default function FacultyReviewsPage() {
                       className="btn-primary text-xs inline-flex items-center gap-1.5"
                     >
                       <FiMessageSquare className="w-3.5 h-3.5" />
-                      Add Team Remark
+                      Add Team Remark / Answer
                     </button>
                   </div>
 
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">
-                      Coordinator Guidance
+                      Coordinator Guidance & Suggestions
                     </h4>
-                    <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{r.suggestions}</p>
+                    <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed bg-gray-50 p-4 rounded-xl border border-gray-100">
+                      {r.suggestions}
+                    </p>
                   </div>
 
                   {r.action_items && r.action_items.length > 0 && (
@@ -164,6 +169,43 @@ export default function FacultyReviewsPage() {
                       </a>
                     </div>
                   )}
+
+                  {/* Student & Faculty Responses Thread */}
+                  <div className="pt-3 border-t border-gray-100 space-y-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                      <FiMessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                      Submitted Answers & Remarks ({r.remarks?.length || 0})
+                    </h4>
+
+                    {r.remarks && r.remarks.length > 0 ? (
+                      <div className="space-y-2">
+                        {r.remarks.map((rem) => (
+                          <div key={rem.id} className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900">{rem.user_name}</span>
+                                {rem.user_roll_number && (
+                                  <span className="font-mono text-gray-500 font-semibold">[{rem.user_roll_number}]</span>
+                                )}
+                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                                  rem.user_role === 'student' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {rem.user_role}
+                                </span>
+                                {rem.team_name && <span className="text-gray-400 font-medium">({rem.team_name})</span>}
+                              </div>
+                              <span className="text-[10px] text-gray-400">{new Date(rem.created_at).toLocaleString()}</span>
+                            </div>
+                            <p className="text-gray-700 whitespace-pre-line pl-0.5 leading-relaxed">
+                              {rem.remark}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">No answers submitted yet by students or faculty.</p>
+                    )}
+                  </div>
                 </div>
               ))
             )}
@@ -179,14 +221,13 @@ export default function FacultyReviewsPage() {
       >
         <form onSubmit={handleSaveRemark} className="space-y-4">
           <div>
-            <label className="label-text">Select My Team</label>
+            <label className="label-text">Select Guided Team</label>
             <select
-              required
               value={selectedTeamId}
               onChange={(e) => setSelectedTeamId(e.target.value)}
               className="input-field"
             >
-              <option value="">Select Team</option>
+              <option value="">General Batch Feedback (No specific team)</option>
               {myTeams.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name} ({t.project_title || 'Untitled'})
@@ -209,7 +250,7 @@ export default function FacultyReviewsPage() {
           </div>
 
           <div>
-            <label className="label-text">Guide Remarks & Feedback</label>
+            <label className="label-text">Guide Remarks & Answers</label>
             <textarea
               required
               rows={4}

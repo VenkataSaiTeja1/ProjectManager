@@ -189,16 +189,34 @@ const bulkImport = asyncHandler(async (req, res) => {
       const phone = row.phone ? row.phone.toString().trim() : null;
       const hash = role === 'student' ? studentHash : facultyHash;
 
-      const { rows } = await query(
-        `INSERT INTO users (roll_number, name, email, phone, role, password_hash, must_change_password, batch_id, is_active)
-         VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, TRUE)
-         ON CONFLICT (LOWER(TRIM(roll_number))) DO UPDATE
-         SET name = EXCLUDED.name, batch_id = COALESCE(EXCLUDED.batch_id, users.batch_id)
-         RETURNING id, roll_number, name, role`,
-        [rollNumber, name, email, phone, role, hash, batchId]
+      // Check if user with this roll number already exists
+      const { rows: existing } = await query(
+        'SELECT id FROM users WHERE LOWER(TRIM(roll_number)) = LOWER(TRIM($1))',
+        [rollNumber]
       );
 
-      successes.push({ row: rowNum, user: rows[0] });
+      let savedUser;
+      if (existing.length > 0) {
+        const { rows: updated } = await query(
+          `UPDATE users
+           SET name = $1, batch_id = COALESCE($2, batch_id), role = $3,
+               email = COALESCE($4, email), phone = COALESCE($5, phone)
+           WHERE id = $6
+           RETURNING id, roll_number, name, role`,
+          [name, batchId, role, email, phone, existing[0].id]
+        );
+        savedUser = updated[0];
+      } else {
+        const { rows: inserted } = await query(
+          `INSERT INTO users (roll_number, name, email, phone, role, password_hash, must_change_password, batch_id, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, TRUE)
+           RETURNING id, roll_number, name, role`,
+          [rollNumber, name, email, phone, role, hash, batchId]
+        );
+        savedUser = inserted[0];
+      }
+
+      successes.push({ row: rowNum, user: savedUser });
     } catch (err) {
       errors.push({ row: rowNum, error: err.message });
     }

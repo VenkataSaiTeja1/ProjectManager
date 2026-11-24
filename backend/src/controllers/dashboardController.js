@@ -30,8 +30,8 @@ const adminDashboard = asyncHandler(async (req, res) => {
     query("SELECT COUNT(*) FROM followups WHERE created_at > NOW() - INTERVAL '7 days'"),
   ]);
 
-  const totalActiveTeams = parseInt(activeTeams.rows[0].count);
-  const submittedToday = parseInt(todayUpdates.rows[0].count);
+  const totalActiveTeams = parseInt(activeTeams.rows[0].count, 10);
+  const submittedToday = parseInt(todayUpdates.rows[0].count, 10);
 
   // Submission trend for last 14 days
   const { rows: trend } = await query(
@@ -68,21 +68,21 @@ const adminDashboard = asyncHandler(async (req, res) => {
 
   return successResponse(res, {
     cards: {
-      totalTeams: parseInt(totalTeams.rows[0].count),
+      totalTeams: parseInt(totalTeams.rows[0].count, 10),
       activeTeams: totalActiveTeams,
-      completedTeams: parseInt(completedTeams.rows[0].count),
-      pendingReviewTeams: parseInt(pendingReviewTeams.rows[0].count),
+      completedTeams: parseInt(completedTeams.rows[0].count, 10),
+      pendingReviewTeams: parseInt(pendingReviewTeams.rows[0].count, 10),
       updatesToday: submittedToday,
       notSubmittedToday: totalActiveTeams - submittedToday,
-      lateToday: parseInt(lateUpdates.rows[0].count),
-      totalStudents: parseInt(totalStudents.rows[0].count),
-      totalFaculty: parseInt(totalFaculty.rows[0].count),
-      papersSubmitted: parseInt(papersStats.rows[0].submitted),
-      papersUnderReview: parseInt(papersStats.rows[0].under_review),
-      papersAccepted: parseInt(papersStats.rows[0].accepted),
-      papersPublished: parseInt(papersStats.rows[0].published),
-      papersTotal: parseInt(papersStats.rows[0].total),
-      recentFollowups: parseInt(recentFollowups.rows[0].count),
+      lateToday: parseInt(lateUpdates.rows[0].count, 10),
+      totalStudents: parseInt(totalStudents.rows[0].count, 10),
+      totalFaculty: parseInt(totalFaculty.rows[0].count, 10),
+      papersSubmitted: parseInt(papersStats.rows[0].submitted, 10),
+      papersUnderReview: parseInt(papersStats.rows[0].under_review, 10),
+      papersAccepted: parseInt(papersStats.rows[0].accepted, 10),
+      papersPublished: parseInt(papersStats.rows[0].published, 10),
+      papersTotal: parseInt(papersStats.rows[0].total, 10),
+      recentFollowups: parseInt(recentFollowups.rows[0].count, 10),
     },
     charts: {
       submissionTrend: trend,
@@ -121,7 +121,46 @@ const facultyDashboard = asyncHandler(async (req, res) => {
     [req.user.id]
   );
 
-  return successResponse(res, { teams, recentUpdates });
+  // Weekly reviews for batches associated with faculty's teams (or all active batches if none assigned)
+  const { rows: wrRows } = await query(
+    `SELECT wr.*, b.name as batch_name, u.name as created_by_name
+     FROM weekly_reviews wr
+     LEFT JOIN batches b ON wr.batch_id = b.id
+     LEFT JOIN users u ON wr.created_by = u.id
+     WHERE (
+       wr.batch_id IN (SELECT DISTINCT batch_id FROM teams WHERE guide_id = $1)
+       OR NOT EXISTS (SELECT 1 FROM teams WHERE guide_id = $1)
+     )
+     ORDER BY wr.review_date DESC, wr.week_no DESC
+     LIMIT 5`,
+    [req.user.id]
+  );
+
+  if (wrRows.length > 0) {
+    const reviewIds = wrRows.map(r => r.id);
+    const { rows: allRemarks } = await query(
+      `SELECT rr.*, u.name as user_name, u.role as user_role, u.roll_number as user_roll_number,
+              t.name as team_name
+       FROM review_remarks rr
+       JOIN users u ON rr.user_id = u.id
+       LEFT JOIN teams t ON rr.team_id = t.id
+       WHERE rr.review_id = ANY($1::int[])
+       ORDER BY rr.created_at ASC`,
+      [reviewIds]
+    );
+
+    const remarksByReview = {};
+    for (const rem of allRemarks) {
+      if (!remarksByReview[rem.review_id]) remarksByReview[rem.review_id] = [];
+      remarksByReview[rem.review_id].push(rem);
+    }
+
+    for (const r of wrRows) {
+      r.remarks = remarksByReview[r.id] || [];
+    }
+  }
+
+  return successResponse(res, { teams, recentUpdates, weeklyReviews: wrRows });
 });
 
 const studentDashboard = asyncHandler(async (req, res) => {
@@ -141,12 +180,70 @@ const studentDashboard = asyncHandler(async (req, res) => {
     [req.user.id]
   );
 
-  if (teamRows.length === 0) {
-    return successResponse(res, { team: null, todayUpdate: null, recentUpdates: [], announcements: [] });
+  const team = teamRows.length > 0 ? teamRows[0] : null;
+  const isLead = team ? team.lead_id === req.user.id : false;
+  const studentBatchId = team ? team.batch_id : req.user.batch_id;
+
+  // Fetch recent weekly reviews with coordinator suggestions for student's batch
+  let weeklyReviews = [];
+  if (studentBatchId) {
+    const { rows: wrRows } = await query(
+      `SELECT wr.*, b.name as batch_name, u.name as created_by_name
+       FROM weekly_reviews wr
+       LEFT JOIN batches b ON wr.batch_id = b.id
+       LEFT JOIN users u ON wr.created_by = u.id
+       WHERE wr.batch_id = $1
+       ORDER BY wr.review_date DESC, wr.week_no DESC
+       LIMIT 4`,
+      [studentBatchId]
+    );
+
+    if (wrRows.length > 0) {
+      const reviewIds = wrRows.map(r => r.id);
+      const { rows: allRemarks } = await query(
+        `SELECT rr.*, u.name as user_name, u.role as user_role, u.roll_number as user_roll_number,
+                t.name as team_name
+         FROM review_remarks rr
+         JOIN users u ON rr.user_id = u.id
+         LEFT JOIN teams t ON rr.team_id = t.id
+         WHERE rr.review_id = ANY($1::int[])
+         ORDER BY rr.created_at ASC`,
+        [reviewIds]
+      );
+
+      const remarksByReview = {};
+      for (const rem of allRemarks) {
+        if (!remarksByReview[rem.review_id]) remarksByReview[rem.review_id] = [];
+        remarksByReview[rem.review_id].push(rem);
+      }
+
+      for (const r of wrRows) {
+        r.remarks = remarksByReview[r.id] || [];
+      }
+    }
+    weeklyReviews = wrRows;
   }
 
-  const team = teamRows[0];
-  const isLead = team.lead_id === req.user.id;
+  if (!team) {
+    // Announcements for student batch
+    const { rows: announcements } = await query(
+      `SELECT * FROM announcements
+       WHERE audience_type = 'all'
+       OR (audience_type = 'batch' AND batch_id = $1)
+       ORDER BY created_at DESC LIMIT 5`,
+      [studentBatchId || 0]
+    );
+
+    return successResponse(res, {
+      team: null,
+      isLead: false,
+      todayUpdate: null,
+      recentUpdates: [],
+      announcements,
+      papers: [],
+      weeklyReviews,
+    });
+  }
 
   // Today's update
   const { rows: todayUpdate } = await query(
@@ -186,6 +283,7 @@ const studentDashboard = asyncHandler(async (req, res) => {
     recentUpdates,
     announcements,
     papers,
+    weeklyReviews,
   });
 });
 

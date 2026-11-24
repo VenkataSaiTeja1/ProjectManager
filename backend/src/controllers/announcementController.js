@@ -89,6 +89,31 @@ const create = asyncHandler(async (req, res) => {
   return successResponse(res, rows[0], 'Announcement posted', 201);
 });
 
+const update = asyncHandler(async (req, res) => {
+  const { audience_type, batch_id, team_id, title, message } = req.body;
+  const fields = [];
+  const params = [];
+  let idx = 1;
+
+  if (audience_type !== undefined) { fields.push(`audience_type = $${idx++}`); params.push(audience_type); }
+  if (batch_id !== undefined) { fields.push(`batch_id = $${idx++}`); params.push(batch_id ? parseInt(batch_id, 10) : null); }
+  if (team_id !== undefined) { fields.push(`team_id = $${idx++}`); params.push(team_id ? parseInt(team_id, 10) : null); }
+  if (title !== undefined) { fields.push(`title = $${idx++}`); params.push(title); }
+  if (message !== undefined) { fields.push(`message = $${idx++}`); params.push(message); }
+
+  if (fields.length === 0) throw new AppError('No fields to update', 400);
+
+  params.push(req.params.id);
+  const { rows } = await query(
+    `UPDATE announcements SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+    params
+  );
+  if (rows.length === 0) throw new AppError('Announcement not found', 404);
+
+  await logAudit(req.user.id, 'update_announcement', 'announcements', rows[0].id);
+  return successResponse(res, rows[0], 'Announcement updated');
+});
+
 const remove = asyncHandler(async (req, res) => {
   const { rows } = await query('DELETE FROM announcements WHERE id = $1 RETURNING id', [req.params.id]);
   if (rows.length === 0) throw new AppError('Announcement not found', 404);
@@ -96,4 +121,4 @@ const remove = asyncHandler(async (req, res) => {
   return successResponse(res, null, 'Announcement deleted');
 });
 
-module.exports = { getAll, create, remove };
+module.exports = { getAll, create, update, remove };

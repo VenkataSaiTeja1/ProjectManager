@@ -138,6 +138,13 @@ const create = asyncHandler(async (req, res) => {
 const update = asyncHandler(async (req, res) => {
   const { batch_id, name, project_title, project_description, lead_id, guide_id, status, progress_percent, start_date, end_date, member_ids } = req.body;
 
+  // Faculty can only update teams they guide
+  if (req.user.role === 'faculty') {
+    const { rows: check } = await query('SELECT id, guide_id FROM teams WHERE id = $1', [req.params.id]);
+    if (check.length === 0) throw new AppError('Team not found', 404);
+    if (check[0].guide_id !== req.user.id) throw new AppError('You can only update teams you guide', 403);
+  }
+
   const result = await transaction(async (client) => {
     const fields = [];
     const params = [];

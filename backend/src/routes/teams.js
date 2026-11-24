@@ -27,7 +27,7 @@ router.get('/template', authorize('admin'), getTeamImportTemplate);
 router.get('/', getAll);
 router.get('/:id', getById);
 router.post('/', authorize('admin'), validate(teamSchema), create);
-router.put('/:id', authorize('admin'), update);
+router.put('/:id', authorize('admin', 'faculty'), update);
 router.delete('/:id', authorize('admin'), remove);
 router.post('/:id/members', authorize('admin'), addMember);
 router.delete('/:id/members/:userId', authorize('admin'), removeMember);

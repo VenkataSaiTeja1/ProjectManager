@@ -11,6 +11,7 @@ import {
   FiPlus,
   FiUploadCloud,
   FiKey,
+  FiEdit2,
   FiTrash2,
   FiSearch,
   FiFilter,
@@ -93,6 +94,16 @@ export default function UsersPage() {
       name: '',
       role: 'student',
       batch_id: batches[0]?.id || '',
+    });
+  };
+
+  const openEditModal = (u) => {
+    setUserModal({ isOpen: true, user: u });
+    setFormData({
+      roll_number: u.roll_number || '',
+      name: u.name || '',
+      role: u.role || 'student',
+      batch_id: u.batch_id || '',
     });
   };
 
@@ -299,7 +310,14 @@ export default function UsersPage() {
                       <td className="py-3.5 px-6 text-xs text-gray-500 font-mono">
                         {u.role === 'student' ? 'Student@123' : u.role === 'faculty' ? 'Faculty@123' : 'Admin@123'}
                       </td>
-                      <td className="py-3.5 px-6 text-right space-x-2">
+                      <td className="py-3.5 px-6 text-right space-x-1">
+                        <button
+                          onClick={() => openEditModal(u)}
+                          title="Edit user details"
+                          className="p-1.5 text-gray-500 hover:text-primary-600 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                          <FiEdit2 className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => handleResetPassword(u)}
                           title="Reset password to default"
@@ -349,11 +367,11 @@ export default function UsersPage() {
         )}
       </div>
 
-      {/* Create User Modal */}
+      {/* Create / Edit User Modal */}
       <Modal
         isOpen={userModal.isOpen}
         onClose={() => setUserModal({ isOpen: false, user: null })}
-        title="Add Student or Faculty"
+        title={userModal.user ? `Edit User: ${userModal.user.name}` : 'Add Student or Faculty'}
       >
         <form onSubmit={handleSaveUser} className="space-y-4">
           <div>
@@ -365,6 +383,7 @@ export default function UsersPage() {
             >
               <option value="student">Student</option>
               <option value="faculty">Faculty Guide</option>
+              <option value="admin">Administrator</option>
             </select>
           </div>
 
@@ -427,7 +446,7 @@ export default function UsersPage() {
               Cancel
             </button>
             <button type="submit" disabled={saving} className="btn-primary text-xs">
-              {saving ? 'Saving...' : 'Add User'}
+              {saving ? 'Saving...' : userModal.user ? 'Update User' : 'Add User'}
             </button>
           </div>
         </form>

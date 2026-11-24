@@ -13,6 +13,7 @@ import {
   FiPlus,
   FiUploadCloud,
   FiEye,
+  FiEdit2,
   FiSearch,
   FiFilter,
   FiTrash2,
@@ -35,7 +36,7 @@ export default function TeamsPage() {
   const [totalPages, setTotalPages] = useState(1);
 
   // Modals
-  const [createModal, setCreateModal] = useState(false);
+  const [teamModal, setTeamModal] = useState({ isOpen: false, isEditing: false, teamId: null });
   const [importModal, setImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
   const [importResult, setImportResult] = useState(null);
@@ -50,6 +51,8 @@ export default function TeamsPage() {
     lead_id: '',
     guide_id: '',
     member_ids: [],
+    status: 'active',
+    progress_percent: 0,
   });
   const [saving, setSaving] = useState(false);
 
@@ -103,23 +106,82 @@ export default function TeamsPage() {
     fetchTeams();
   };
 
-  const handleCreateTeam = async (e) => {
+  const openCreateModal = () => {
+    setTeamModal({ isOpen: true, isEditing: false, teamId: null });
+    setFormData({
+      batch_id: batches[0]?.id || '',
+      name: '',
+      project_title: '',
+      project_description: '',
+      lead_id: '',
+      guide_id: '',
+      member_ids: [],
+      status: 'active',
+      progress_percent: 0,
+    });
+  };
+
+  const openEditModal = async (t) => {
+    setTeamModal({ isOpen: true, isEditing: true, teamId: t.id });
+    setFormData({
+      batch_id: t.batch_id || '',
+      name: t.name || '',
+      project_title: t.project_title || '',
+      project_description: t.project_description || '',
+      lead_id: t.lead_id || '',
+      guide_id: t.guide_id || '',
+      member_ids: [],
+      status: t.status || 'active',
+      progress_percent: t.progress_percent || 0,
+    });
+
+    try {
+      const res = await api.get(`/teams/${t.id}`);
+      if (res.data) {
+        setFormData({
+          batch_id: res.data.batch_id || '',
+          name: res.data.name || '',
+          project_title: res.data.project_title || '',
+          project_description: res.data.project_description || '',
+          lead_id: res.data.lead_id || '',
+          guide_id: res.data.guide_id || '',
+          member_ids: res.data.members ? res.data.members.map(m => m.id.toString()) : [],
+          status: res.data.status || 'active',
+          progress_percent: res.data.progress_percent || 0,
+        });
+      }
+    } catch (e) {
+      console.error('Error fetching team members:', e);
+    }
+  };
+
+  const handleSaveTeam = async (e) => {
     e.preventDefault();
     try {
       setSaving(true);
       const payload = {
-        ...formData,
         batch_id: parseInt(formData.batch_id, 10),
+        name: formData.name,
+        project_title: formData.project_title || null,
+        project_description: formData.project_description || null,
         lead_id: formData.lead_id ? parseInt(formData.lead_id, 10) : null,
         guide_id: formData.guide_id ? parseInt(formData.guide_id, 10) : null,
         member_ids: formData.member_ids.map(id => parseInt(id, 10)),
+        status: formData.status || 'active',
+        progress_percent: parseInt(formData.progress_percent || 0, 10),
       };
-      await api.post('/teams', payload);
-      toast.success('Team created successfully');
-      setCreateModal(false);
+
+      if (teamModal.isEditing) {
+        await api.put(`/teams/${teamModal.teamId}`, payload);
+        toast.success('Team and project updated successfully');
+      } else {
+        await api.post('/teams', payload);
+        toast.success('Team created successfully');
+      }
+      setTeamModal({ isOpen: false, isEditing: false, teamId: null });
       fetchTeams();
     } catch (err) {
-      toast.error(err.message || 'Error creating team');
+      toast.error(err.message || 'Error saving team');
     } finally {
       setSaving(false);
     }
@@ -161,7 +223,7 @@ export default function TeamsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black text-gray-900 tracking-tight">Project Teams Management</h1>
-            <p className="text-sm text-gray-500">Configure team leads, faculty guides, members & monitor progress</p>
+            <p className="text-sm text-gray-500">Configure team leads, faculty guides, members, project titles & monitor progress</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -178,19 +240,8 @@ export default function TeamsPage() {
             </button>
 
             <button
-              onClick={() => {
-                setCreateModal(true);
-                setFormData({
-                  batch_id: batches[0]?.id || '',
-                  name: '',
-                  project_title: '',
-                  project_description: '',
-                  lead_id: '',
-                  guide_id: '',
-                  member_ids: [],
-                });
-              }}
-              className="btn-primary inline-flex items-center gap-2 text-xs"
+              onClick={openCreateModal}
+              className="btn-primary inline-flex items-center gap-2"
             >
               <FiPlus className="w-4 h-4" />
               New Team
@@ -286,7 +337,11 @@ export default function TeamsPage() {
                       <td className="py-3.5 px-6 font-bold text-gray-900">
                         <div>{t.name}</div>
                         <div className="text-xs text-gray-500 font-normal truncate max-w-xs">
-                          {t.project_title || 'No project title set'}
+                          {t.project_title ? (
+                            <span className="text-gray-700 font-medium">{t.project_title}</span>
+                          ) : (
+                            <span className="text-amber-600 font-medium italic">No project title set (Click Edit to add)</span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3.5 px-6 text-xs text-gray-600 font-medium">{t.batch_name}</td>
@@ -314,17 +369,24 @@ export default function TeamsPage() {
                       <td className="py-3.5 px-6">
                         <Badge status={t.status} size="sm" />
                       </td>
-                      <td className="py-3.5 px-6 text-right space-x-2">
+                      <td className="py-3.5 px-6 text-right space-x-1">
                         <button
                           onClick={() => router.push(`/admin/teams/${t.id}`)}
-                          className="p-1.5 text-gray-500 hover:text-primary-600 rounded-lg hover:bg-gray-100"
+                          className="p-1.5 text-gray-500 hover:text-primary-600 rounded-lg hover:bg-gray-100 transition-colors"
                           title="View Details"
                         >
                           <FiEye className="w-4 h-4" />
                         </button>
                         <button
+                          onClick={() => openEditModal(t)}
+                          className="p-1.5 text-gray-500 hover:text-amber-600 rounded-lg hover:bg-gray-100 transition-colors"
+                          title="Edit Team & Project Details"
+                        >
+                          <FiEdit2 className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => handleDeleteTeam(t.id, t.name)}
-                          className="p-1.5 text-gray-500 hover:text-rose-600 rounded-lg hover:bg-gray-100"
+                          className="p-1.5 text-gray-500 hover:text-rose-600 rounded-lg hover:bg-gray-100 transition-colors"
                           title="Delete Team"
                         >
                           <FiTrash2 className="w-4 h-4" />
@@ -362,14 +424,14 @@ export default function TeamsPage() {
         )}
       </div>
 
-      {/* Create Team Modal */}
+      {/* Create / Edit Team Modal */}
       <Modal
-        isOpen={createModal}
-        onClose={() => setCreateModal(false)}
-        title="Create Student Project Team"
+        isOpen={teamModal.isOpen}
+        onClose={() => setTeamModal({ isOpen: false, isEditing: false, teamId: null })}
+        title={teamModal.isEditing ? 'Edit Team & Project Details' : 'Create New Project Team'}
         maxWidth="max-w-xl"
       >
-        <form onSubmit={handleCreateTeam} className="space-y-4">
+        <form onSubmit={handleSaveTeam} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label-text">Batch</label>
@@ -388,24 +450,24 @@ export default function TeamsPage() {
               </select>
             </div>
             <div>
-              <label className="label-text">Team Name</label>
+              <label className="label-text">Team Name / Project Batch Name</label>
               <input
                 required
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g. Team Gamma"
+                placeholder="e.g. Batch 01 or Team Gamma"
                 className="input-field"
               />
             </div>
           </div>
 
           <div>
-            <label className="label-text">Project Title</label>
+            <label className="label-text">Project Title / Project Name</label>
             <input
               value={formData.project_title}
               onChange={(e) => setFormData({ ...formData, project_title: e.target.value })}
-              placeholder="e.g. AI-driven Autonomous Rover"
-              className="input-field"
+              placeholder="e.g. AI-driven Autonomous Rover (Can be edited anytime)"
+              className="input-field font-medium text-gray-900"
             />
           </div>
 
@@ -455,6 +517,32 @@ export default function TeamsPage() {
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-text">Project Status</label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="input-field"
+              >
+                <option value="active">Active</option>
+                <option value="pending_review">Pending Review</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+            <div>
+              <label className="label-text">Progress ({formData.progress_percent || 0}%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={formData.progress_percent}
+                onChange={(e) => setFormData({ ...formData, progress_percent: e.target.value })}
+                className="input-field"
+              />
+            </div>
+          </div>
+
           <div>
             <label className="label-text">Team Members (Hold Ctrl / Cmd to multi-select)</label>
             <select
@@ -479,13 +567,13 @@ export default function TeamsPage() {
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              onClick={() => setCreateModal(false)}
+              onClick={() => setTeamModal({ isOpen: false, isEditing: false, teamId: null })}
               className="btn-secondary text-xs"
             >
               Cancel
             </button>
             <button type="submit" disabled={saving} className="btn-primary text-xs">
-              {saving ? 'Creating...' : 'Create Team'}
+              {saving ? 'Saving...' : teamModal.isEditing ? 'Save Changes' : 'Create Team'}
             </button>
           </div>
         </form>

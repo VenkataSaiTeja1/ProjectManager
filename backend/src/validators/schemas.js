@@ -115,8 +115,8 @@ const commentSchema = z.object({
 
 const remarkSchema = z.object({
   review_id: z.number().int().positive(),
-  team_id: z.number().int().positive(),
-  remark: z.string().min(1, 'Remark is required'),
+  team_id: z.number().int().positive().optional().nullable(),
+  remark: z.string().min(1, 'Remark or answer is required'),
   status: z.enum(['pending', 'approved', 'needs_work']).optional(),
 });
 

@@ -14,6 +14,7 @@ import {
   FiMail,
   FiPhone,
   FiPlus,
+  FiEdit2,
   FiTrash2,
   FiMessageSquare,
   FiFileText,
@@ -37,6 +38,23 @@ export default function AdminTeamDetailPage() {
   const [editProgress, setEditProgress] = useState(0);
   const [savingStatus, setSavingStatus] = useState(false);
 
+  // Edit Team Details Modal
+  const [editTeamModal, setEditTeamModal] = useState(false);
+  const [batches, setBatches] = useState([]);
+  const [facultyList, setFacultyList] = useState([]);
+  const [studentsList, setStudentsList] = useState([]);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    project_title: '',
+    project_description: '',
+    batch_id: '',
+    guide_id: '',
+    lead_id: '',
+    status: 'active',
+    progress_percent: 0,
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+
   // Comment Modal state
   const [commentModal, setCommentModal] = useState({ isOpen: false, updateId: null });
   const [commentText, setCommentText] = useState('');
@@ -51,11 +69,14 @@ export default function AdminTeamDetailPage() {
   const fetchTeamDetails = async () => {
     try {
       setLoading(true);
-      const [tRes, uRes, pRes, fRes] = await Promise.all([
+      const [tRes, uRes, pRes, fRes, bRes, facRes, studRes] = await Promise.all([
         api.get(`/teams/${id}`),
         api.get(`/daily-updates/team/${id}`),
         api.get('/papers', { team_id: id }),
         api.get('/followups', { team_id: id }),
+        api.get('/batches'),
+        api.get('/users', { role: 'faculty', limit: 100 }),
+        api.get('/users', { role: 'student', limit: 200 }),
       ]);
       setTeam(tRes.data);
       setEditStatus(tRes.data.status);
@@ -63,6 +84,20 @@ export default function AdminTeamDetailPage() {
       setUpdates(uRes.data || []);
       setPapers(pRes.data || []);
       setFollowups(fRes.data || []);
+      setBatches(bRes.data || []);
+      setFacultyList(facRes.data || []);
+      setStudentsList(studRes.data || []);
+
+      setEditFormData({
+        name: tRes.data.name || '',
+        project_title: tRes.data.project_title || '',
+        project_description: tRes.data.project_description || '',
+        batch_id: tRes.data.batch_id || '',
+        guide_id: tRes.data.guide_id || '',
+        lead_id: tRes.data.lead_id || '',
+        status: tRes.data.status || 'active',
+        progress_percent: tRes.data.progress_percent || 0,
+      });
     } catch (err) {
       toast.error('Failed to load team data');
     } finally {
@@ -87,6 +122,30 @@ export default function AdminTeamDetailPage() {
       toast.error(err.message || 'Failed to update');
     } finally {
       setSavingStatus(false);
+    }
+  };
+
+  const handleSaveTeamEdit = async (e) => {
+    e.preventDefault();
+    try {
+      setSavingEdit(true);
+      await api.put(`/teams/${id}`, {
+        name: editFormData.name,
+        project_title: editFormData.project_title || null,
+        project_description: editFormData.project_description || null,
+        batch_id: editFormData.batch_id ? parseInt(editFormData.batch_id, 10) : undefined,
+        guide_id: editFormData.guide_id ? parseInt(editFormData.guide_id, 10) : null,
+        lead_id: editFormData.lead_id ? parseInt(editFormData.lead_id, 10) : null,
+        status: editFormData.status,
+        progress_percent: parseInt(editFormData.progress_percent || 0, 10),
+      });
+      toast.success('Project details updated successfully');
+      setEditTeamModal(false);
+      fetchTeamDetails();
+    } catch (err) {
+      toast.error(err.message || 'Failed to update project details');
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -128,7 +187,7 @@ export default function AdminTeamDetailPage() {
     try {
       setSavingMember(true);
       await api.post(`/teams/${id}/members`, { user_id: parseInt(selectedStudentId, 10) });
-      toast.success('Member added');
+      toast.success('Student enrolled into team');
       setAddMemberModal(false);
       fetchTeamDetails();
     } catch (err) {
@@ -162,13 +221,23 @@ export default function AdminTeamDetailPage() {
   return (
     <AppLayout requiredRole="admin">
       <div className="space-y-6">
-        <button
-          onClick={() => router.push('/admin/teams')}
-          className="inline-flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-gray-900 transition-colors"
-        >
-          <FiArrowLeft className="w-4 h-4" />
-          Back to Teams List
-        </button>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => router.push('/admin/teams')}
+            className="inline-flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            <FiArrowLeft className="w-4 h-4" />
+            Back to Teams List
+          </button>
+
+          <button
+            onClick={() => setEditTeamModal(true)}
+            className="btn-secondary text-xs inline-flex items-center gap-1.5"
+          >
+            <FiEdit2 className="w-3.5 h-3.5 text-primary-600" />
+            Edit Project & Team Details
+          </button>
+        </div>
 
         {/* Team Header Card */}
         <div className="card">
@@ -179,7 +248,7 @@ export default function AdminTeamDetailPage() {
                 <Badge status={team.status} />
               </div>
               <p className="text-base font-semibold text-primary-700 mt-1">
-                {team.project_title || 'Untitled Project'}
+                {team.project_title || <span className="text-amber-600 italic">No project title set (Click Edit to add)</span>}
               </p>
               <p className="text-xs text-gray-400 mt-0.5">Cohort: {team.batch_name}</p>
             </div>
@@ -228,69 +297,72 @@ export default function AdminTeamDetailPage() {
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-5 border-t border-gray-100">
-            <div className="flex items-center gap-3 bg-blue-50/50 p-3.5 rounded-xl border border-blue-100">
-              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-                TL
+            {/* Guide Info */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                <FiUser className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">Team Lead</span>
-                <p className="text-sm font-bold text-gray-900">
-                  {team.lead_roll_number ? `[${team.lead_roll_number}] ` : ''}{team.lead_name || 'Unassigned'}
-                </p>
-                {team.lead_phone && <p className="text-xs text-gray-500 font-mono">{team.lead_phone}</p>}
+                <span className="text-[10px] font-bold uppercase text-gray-400 block">Faculty Guide</span>
+                <span className="font-bold text-sm text-gray-900">{team.guide_name || 'Not assigned'}</span>
+                {team.guide_roll_number && (
+                  <span className="text-xs text-gray-400 font-mono block">[{team.guide_roll_number}]</span>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-3 bg-purple-50/50 p-3.5 rounded-xl border border-purple-100">
-              <div className="w-10 h-10 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
-                FG
+            {/* Lead Info */}
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                <FiUser className="w-5 h-5" />
               </div>
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700">Faculty Guide</span>
-                <p className="text-sm font-bold text-gray-900">
-                  {team.guide_roll_number ? `[${team.guide_roll_number}] ` : ''}{team.guide_name || 'Unassigned'}
-                </p>
-                {team.guide_email && <p className="text-xs text-gray-500 font-mono">{team.guide_email}</p>}
+                <span className="text-[10px] font-bold uppercase text-gray-400 block">Team Lead</span>
+                <span className="font-bold text-sm text-gray-900">{team.lead_name || 'Not assigned'}</span>
+                {team.lead_roll_number && (
+                  <span className="text-xs text-gray-400 font-mono block">[{team.lead_roll_number}]</span>
+                )}
               </div>
             </div>
           </div>
         </div>
 
         {/* Members List */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="section-title">Team Members ({team.members?.length || 0})</h3>
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div>
+              <h2 className="section-title">Team Roster ({team.members?.length || 0} Members)</h2>
+              <p className="text-xs text-gray-400">Students enrolled in this capstone team</p>
+            </div>
             <button onClick={openAddMember} className="btn-secondary text-xs inline-flex items-center gap-1.5">
-              <FiPlus className="w-3.5 h-3.5" />
-              Add Member
+              <FiPlus className="w-4 h-4" />
+              Add Student
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {team.members?.map((m) => (
               <div
                 key={m.id}
-                className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/50"
+                className="p-3.5 rounded-xl border border-gray-100 bg-gray-50/50 flex items-center justify-between gap-2"
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-bold text-gray-800">
-                      {m.roll_number ? `[${m.roll_number}] ` : ''}{m.name}
-                    </span>
+                    <span className="font-bold text-sm text-gray-900">{m.name}</span>
                     {m.is_lead && (
-                      <span className="text-[10px] font-black uppercase bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded">
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
                         Lead
                       </span>
                     )}
                   </div>
-                  {m.phone && <p className="text-xs text-gray-500 font-mono">{m.phone}</p>}
+                  <p className="text-xs text-primary-700 font-mono font-bold uppercase">{m.roll_number || '—'}</p>
                 </div>
 
                 {!m.is_lead && (
                   <button
                     onClick={() => handleRemoveMember(m.id, m.name)}
-                    className="text-gray-400 hover:text-rose-600 p-1"
-                    title="Remove member"
+                    className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-gray-100"
+                    title="Remove Member"
                   >
                     <FiTrash2 className="w-4 h-4" />
                   </button>
@@ -301,88 +373,217 @@ export default function AdminTeamDetailPage() {
         </div>
 
         {/* Daily Updates History */}
-        <div className="card">
-          <h3 className="section-title mb-4">Daily Status Submissions History</h3>
+        <div className="card space-y-4">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div>
+              <h2 className="section-title">Daily Progress Logs & Status Updates</h2>
+              <p className="text-xs text-gray-400">Historical daily updates submitted by team lead</p>
+            </div>
+          </div>
+
           {updates.length === 0 ? (
-            <p className="text-xs text-gray-400 py-4 text-center">No daily updates recorded yet.</p>
+            <p className="text-xs text-gray-400 py-6 text-center">No daily logs submitted yet for this team.</p>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {updates.map((u) => (
-                <div key={u.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50/40 space-y-2">
-                  <div className="flex items-center justify-between">
+                <div key={u.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50/50 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200/50 pb-2">
                     <div className="flex items-center gap-2">
-                      <FiCalendar className="w-4 h-4 text-primary-500" />
-                      <span className="text-sm font-bold text-gray-900">
+                      <span className="font-bold text-sm text-gray-900">
                         {new Date(u.update_date).toLocaleDateString()}
                       </span>
-                      {u.is_late ? (
-                        <Badge status="late" text="Late" size="sm" />
-                      ) : (
-                        <Badge status="submitted" text="On-Time" size="sm" />
+                      {u.is_late && (
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">
+                          Submitted Late
+                        </span>
                       )}
                     </div>
-                    <span className="text-xs font-bold text-primary-700 bg-primary-50 px-2.5 py-1 rounded-full">
-                      {u.percent_complete}% Completed
-                    </span>
+
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-bold text-primary-700">
+                        {u.percent_complete}% Done
+                      </span>
+                      <button
+                        onClick={() => setCommentModal({ isOpen: true, updateId: u.id })}
+                        className="text-xs font-semibold text-primary-600 hover:underline flex items-center gap-1"
+                      >
+                        <FiMessageSquare className="w-3.5 h-3.5" />
+                        Add Recommendation
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-700 mt-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                     <div>
-                      <strong className="text-gray-900 block mb-0.5">Done Today:</strong>
-                      <p className="bg-white p-2 rounded-lg border border-gray-100">{u.done_today}</p>
+                      <strong className="text-gray-700 block mb-0.5">Done Today:</strong>
+                      <p className="text-gray-600">{u.done_today}</p>
                     </div>
-                    <div>
-                      <strong className="text-gray-900 block mb-0.5">Plan Tomorrow:</strong>
-                      <p className="bg-white p-2 rounded-lg border border-gray-100">{u.plan_tomorrow || 'None specified'}</p>
-                    </div>
+                    {u.plan_tomorrow && (
+                      <div>
+                        <strong className="text-gray-700 block mb-0.5">Plan for Tomorrow:</strong>
+                        <p className="text-gray-600">{u.plan_tomorrow}</p>
+                      </div>
+                    )}
                   </div>
 
                   {u.blockers && (
-                    <div className="text-xs text-rose-700 bg-rose-50 p-2 rounded-lg border border-rose-100">
-                      <strong>Blockers:</strong> {u.blockers}
+                    <div className="text-xs bg-rose-50 p-2.5 rounded-lg border border-rose-100 text-rose-800">
+                      <strong>Current Blocker / Challenge:</strong> {u.blockers}
                     </div>
                   )}
 
-                  <div className="flex justify-end pt-2">
-                    <button
-                      onClick={() => {
-                        setCommentModal({ isOpen: true, updateId: u.id });
-                        setCommentText('');
-                      }}
-                      className="text-xs font-bold text-primary-600 hover:text-primary-800 inline-flex items-center gap-1"
-                    >
-                      <FiMessageSquare className="w-3.5 h-3.5" />
-                      Add Coordinator Note
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Follow-up Calls */}
-        <div className="card">
-          <h3 className="section-title mb-3">Coordinator Follow-ups Log</h3>
-          {followups.length === 0 ? (
-            <p className="text-xs text-gray-400 py-3 text-center">No follow-ups recorded.</p>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {followups.map((f) => (
-                <div key={f.id} className="py-2.5 flex items-start justify-between text-xs">
-                  <div>
-                    <p className="font-semibold text-gray-800">{f.note}</p>
-                    <p className="text-[11px] text-gray-400">By {f.created_by_name}</p>
-                  </div>
-                  <span className="text-gray-400 font-mono text-[11px]">
-                    {new Date(f.called_on).toLocaleString()}
-                  </span>
+                  {/* Comments */}
+                  {u.comments && u.comments.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                      <strong className="text-[11px] uppercase tracking-wider text-gray-400 block">
+                        Coordinator / Guide Comments:
+                      </strong>
+                      {u.comments.map((c) => (
+                        <div key={c.id} className="text-xs bg-white p-2 rounded border border-gray-100">
+                          <span className="font-semibold text-gray-800">{c.user_name}: </span>
+                          <span className="text-gray-600">{c.comment}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Edit Team & Project Details Modal */}
+      <Modal
+        isOpen={editTeamModal}
+        onClose={() => setEditTeamModal(false)}
+        title="Edit Project and Team Information"
+        maxWidth="max-w-xl"
+      >
+        <form onSubmit={handleSaveTeamEdit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-text">Batch</label>
+              <select
+                value={editFormData.batch_id}
+                onChange={(e) => setEditFormData({ ...editFormData, batch_id: e.target.value })}
+                className="input-field"
+              >
+                {batches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label-text">Team Name</label>
+              <input
+                required
+                value={editFormData.name}
+                onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                className="input-field"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label-text">Project Title / Project Name</label>
+            <input
+              value={editFormData.project_title}
+              onChange={(e) => setEditFormData({ ...editFormData, project_title: e.target.value })}
+              placeholder="e.g. Smart IoT Agriculture Monitor"
+              className="input-field font-semibold text-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="label-text">Project Abstract / Description</label>
+            <textarea
+              rows={3}
+              value={editFormData.project_description}
+              onChange={(e) => setEditFormData({ ...editFormData, project_description: e.target.value })}
+              placeholder="Project description, scope, and objectives..."
+              className="input-field"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-text">Faculty Guide</label>
+              <select
+                value={editFormData.guide_id}
+                onChange={(e) => setEditFormData({ ...editFormData, guide_id: e.target.value })}
+                className="input-field"
+              >
+                <option value="">Unassigned</option>
+                {facultyList.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.roll_number ? `[${f.roll_number}] ` : ''}{f.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label-text">Team Lead</label>
+              <select
+                value={editFormData.lead_id}
+                onChange={(e) => setEditFormData({ ...editFormData, lead_id: e.target.value })}
+                className="input-field"
+              >
+                <option value="">Select Team Lead</option>
+                {studentsList.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.roll_number ? `[${s.roll_number}] ` : ''}{s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label-text">Status</label>
+              <select
+                value={editFormData.status}
+                onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
+                className="input-field"
+              >
+                <option value="active">Active</option>
+                <option value="pending_review">Pending Review</option>
+                <option value="completed">Completed</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="label-text">Progress ({editFormData.progress_percent || 0}%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editFormData.progress_percent}
+                onChange={(e) => setEditFormData({ ...editFormData, progress_percent: e.target.value })}
+                className="input-field"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setEditTeamModal(false)}
+              className="btn-secondary text-xs"
+            >
+              Cancel
+            </button>
+            <button type="submit" disabled={savingEdit} className="btn-primary text-xs">
+              {savingEdit ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Add Member Modal */}
       <Modal

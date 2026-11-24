@@ -22,7 +22,7 @@ router.post('/', authorize('admin'), validate(weeklyReviewSchema), create);
 router.put('/:id', authorize('admin'), update);
 router.delete('/:id', authorize('admin'), remove);
 router.post('/:id/ack', authorize('student'), acknowledge);
-router.post('/remarks', authorize('admin', 'faculty'), validate(remarkSchema), addRemark);
-router.put('/remarks/:remarkId', authorize('admin', 'faculty'), updateRemark);
+router.post('/remarks', authorize('admin', 'faculty', 'student'), validate(remarkSchema), addRemark);
+router.put('/remarks/:remarkId', authorize('admin', 'faculty', 'student'), updateRemark);
 
 module.exports = router;

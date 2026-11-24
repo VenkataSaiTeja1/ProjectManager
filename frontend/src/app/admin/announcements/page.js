@@ -6,7 +6,7 @@ import Loading from '@/components/ui/Loading';
 import Modal from '@/components/ui/Modal';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
-import { FiPlus, FiTrash2, FiMessageSquare, FiSend, FiUsers } from 'react-icons/fi';
+import { FiPlus, FiEdit2, FiTrash2, FiMessageSquare, FiSend, FiUsers } from 'react-icons/fi';
 
 export default function AdminAnnouncementsPage() {
   const [announcements, setAnnouncements] = useState([]);
@@ -14,7 +14,7 @@ export default function AdminAnnouncementsPage() {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [modal, setModal] = useState(false);
+  const [modal, setModal] = useState({ isOpen: false, item: null });
   const [formData, setFormData] = useState({
     audience_type: 'all',
     batch_id: '',
@@ -46,7 +46,23 @@ export default function AdminAnnouncementsPage() {
     fetchData();
   }, []);
 
-  const handlePost = async (e) => {
+  const openCreateModal = () => {
+    setModal({ isOpen: true, item: null });
+    setFormData({ audience_type: 'all', batch_id: '', team_id: '', title: '', message: '' });
+  };
+
+  const openEditModal = (a) => {
+    setModal({ isOpen: true, item: a });
+    setFormData({
+      audience_type: a.audience_type || 'all',
+      batch_id: a.batch_id || '',
+      team_id: a.team_id || '',
+      title: a.title || '',
+      message: a.message || '',
+    });
+  };
+
+  const handleSave = async (e) => {
     e.preventDefault();
     try {
       setSending(true);
@@ -57,13 +73,19 @@ export default function AdminAnnouncementsPage() {
         title: formData.title,
         message: formData.message,
       };
-      await api.post('/announcements', payload);
-      toast.success('Announcement broadcasted');
-      setModal(false);
+
+      if (modal.item) {
+        await api.put(`/announcements/${modal.item.id}`, payload);
+        toast.success('Announcement updated');
+      } else {
+        await api.post('/announcements', payload);
+        toast.success('Announcement broadcasted');
+      }
+      setModal({ isOpen: false, item: null });
       setFormData({ audience_type: 'all', batch_id: '', team_id: '', title: '', message: '' });
       fetchData();
     } catch (err) {
-      toast.error(err.message || 'Error broadcasting');
+      toast.error(err.message || 'Error saving announcement');
     } finally {
       setSending(false);
     }
@@ -90,7 +112,7 @@ export default function AdminAnnouncementsPage() {
           </div>
 
           <button
-            onClick={() => setModal(true)}
+            onClick={openCreateModal}
             className="btn-primary inline-flex items-center gap-2 text-xs"
           >
             <FiPlus className="w-4 h-4" />
@@ -121,12 +143,22 @@ export default function AdminAnnouncementsPage() {
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => handleDelete(a.id)}
-                      className="text-gray-400 hover:text-rose-600 p-1"
-                    >
-                      <FiTrash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openEditModal(a)}
+                        className="text-gray-400 hover:text-amber-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                        title="Edit Announcement"
+                      >
+                        <FiEdit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(a.id)}
+                        className="text-gray-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                        title="Delete Announcement"
+                      >
+                        <FiTrash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{a.message}</p>
@@ -143,11 +175,11 @@ export default function AdminAnnouncementsPage() {
       </div>
 
       <Modal
-        isOpen={modal}
-        onClose={() => setModal(false)}
-        title="Broadcast Announcement"
+        isOpen={modal.isOpen}
+        onClose={() => setModal({ isOpen: false, item: null })}
+        title={modal.item ? 'Edit Announcement' : 'Broadcast Announcement'}
       >
-        <form onSubmit={handlePost} className="space-y-4">
+        <form onSubmit={handleSave} className="space-y-4">
           <div>
             <label className="label-text">Audience Scope</label>
             <select
@@ -192,7 +224,7 @@ export default function AdminAnnouncementsPage() {
                 <option value="">Select Team</option>
                 {teams.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name} ({t.batch_name})
+                    {t.name} ({t.project_title || 'Untitled'})
                   </option>
                 ))}
               </select>
@@ -205,19 +237,19 @@ export default function AdminAnnouncementsPage() {
               required
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              placeholder="e.g. Schedule for Phase-1 Review Presentations"
+              placeholder="e.g. Phase 1 Project Review Schedule Announced"
               className="input-field"
             />
           </div>
 
           <div>
-            <label className="label-text">Message Content</label>
+            <label className="label-text">Message / Content</label>
             <textarea
               required
               rows={4}
               value={formData.message}
               onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-              placeholder="Provide all relevant details, timelines and instructions..."
+              placeholder="Write the full announcement details, deadlines or guidelines..."
               className="input-field"
             />
           </div>
@@ -225,13 +257,13 @@ export default function AdminAnnouncementsPage() {
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              onClick={() => setModal(false)}
+              onClick={() => setModal({ isOpen: false, item: null })}
               className="btn-secondary text-xs"
             >
               Cancel
             </button>
             <button type="submit" disabled={sending} className="btn-primary text-xs">
-              {sending ? 'Sending...' : 'Broadcast Announcement'}
+              {sending ? 'Saving...' : modal.item ? 'Update Announcement' : 'Broadcast Now'}
             </button>
           </div>
         </form>
